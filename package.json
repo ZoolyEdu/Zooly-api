@@ -1,0 +1,33 @@
+{
+  "name": "zooly-api",
+  "version": "1.0.0",
+  "description": "API do Zooly Game com Node.js, Express e MongoDB",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZoolyEdu/Zooly-api.git"
+  },
+  "keywords": [
+    "zooly",
+    "api",
+    "express",
+    "mongodb",
+    "mongoose"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "mongoose": "^9.11.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

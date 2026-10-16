@@ -1,0 +1,12 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+
+# Permitir o arquivo de exemplo
+!.env.example
+
+# Logs
+npm-debug.log*
