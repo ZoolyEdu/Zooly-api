@@ -2,6 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import healthRoutes from './routes/healthRoutes.js';
+import professorRoutes from './routes/professorRoutes.js';
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.get('/', (req, res) => {
 
 // Rotas
 app.use('/api/health', healthRoutes);
+app.use('/api/professores', professorRoutes);
 
 
 // Rota não encontrada (404)
