@@ -1,28 +1,33 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import Professor from '../models/Professor.js';
+import Escola from '../models/Escola.js';
 
 const router = Router();
 
 router.post('/', async (req, res, next) => {
   try {
-    const { nome, email, senha } = req.body;
+    const { nome, email, senha, codigoPermanente } = req.body;
 
     if (
       typeof nome !== 'string' ||
       typeof email !== 'string' ||
       typeof senha !== 'string' ||
+      typeof codigoPermanente !== 'string' ||
       !nome.trim() ||
       !email.trim() ||
-      !senha
+      !senha ||
+      !codigoPermanente.trim()
     ) {
       return res.status(400).json({
         sucesso: false,
-        mensagem: 'Nome, e-mail e senha são obrigatórios.'
+        mensagem:
+          'Nome, e-mail, senha e código permanente da escola são obrigatórios.'
       });
     }
 
     const emailNormalizado = email.trim().toLowerCase();
+    const codigoNormalizado = codigoPermanente.trim();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNormalizado)) {
       return res.status(400).json({
@@ -35,6 +40,17 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({
         sucesso: false,
         mensagem: 'A senha deve ter pelo menos 8 caracteres.'
+      });
+    }
+
+    const escola = await Escola.findOne({
+      codigoPermanente: codigoNormalizado
+    });
+
+    if (!escola) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'Código permanente da escola inválido.'
       });
     }
 
@@ -54,7 +70,8 @@ router.post('/', async (req, res, next) => {
     const professor = await Professor.create({
       nome: nome.trim(),
       email: emailNormalizado,
-      senha: senhaHash
+      senha: senhaHash,
+      escolas: [escola._id]
     });
 
     return res.status(201).json({
@@ -63,7 +80,8 @@ router.post('/', async (req, res, next) => {
       professor: {
         id: professor._id,
         nome: professor.nome,
-        email: professor.email
+        email: professor.email,
+        escolas: professor.escolas
       }
     });
   } catch (error) {
