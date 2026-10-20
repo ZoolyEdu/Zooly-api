@@ -6,6 +6,7 @@ import Escola from '../models/Escola.js';
 import Professor from '../models/Professor.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 
@@ -246,6 +247,63 @@ router.put('/:id', async (req, res, next) => {
       sucesso: true,
       mensagem: 'Turma atualizada com sucesso.',
       turma
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+ // Definir ou trocar a senha compartilhada da turma
+router.patch('/:id/senha-acesso', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'ID de turma inválido.'
+      });
+    }
+
+    const { senha } = req.body;
+
+    if (
+      typeof senha !== 'string' ||
+      senha.trim().length < 4 ||
+      senha.trim().length > 20
+    ) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'A senha deve ter entre 4 e 20 caracteres.'
+      });
+    }
+
+    const professor = await obterProfessor(req);
+
+    if (!professor) {
+      return res.status(401).json({
+        sucesso: false,
+        mensagem: 'Professor não encontrado.'
+      });
+    }
+
+    const turma = await Turma.findOne({
+      _id: req.params.id,
+      escola: { $in: professor.escolas },
+      arquivada: false
+    });
+
+    if (!turma) {
+      return res.status(404).json({
+        sucesso: false,
+        mensagem: 'Turma não encontrada ou arquivada.'
+      });
+    }
+
+    turma.senhaAcessoHash = await bcrypt.hash(senha.trim(), 10);
+    await turma.save();
+
+    return res.status(200).json({
+      sucesso: true,
+      mensagem: 'Senha de acesso da turma configurada com sucesso.'
     });
   } catch (error) {
     next(error);
