@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const professorSchema = new mongoose.Schema(
   {
+    
     nome: {
       type: String,
       required: [true, 'O nome é obrigatório.'],
@@ -26,6 +27,7 @@ const professorSchema = new mongoose.Schema(
       }
     ]
   },
+  
   {
     timestamps: true
   }
