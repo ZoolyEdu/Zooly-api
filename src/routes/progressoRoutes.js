@@ -25,6 +25,26 @@ async function buscarAtividadePublicada(id) {
   return atividade?.status === 'publicada' ? atividade : null;
 }
 
+async function validarDesbloqueioSequencial(alunoId, atividadeAtual) {
+  const ordemAtual = atividadeAtual.ordem || 1;
+  if (ordemAtual === 1) return true;
+
+  const atividadeAnterior = await Atividade.findOne({
+    turma: atividadeAtual.turma,
+    ordem: ordemAtual - 1
+  });
+
+  if (!atividadeAnterior) return true;
+
+  const progressoAnterior = await ProgressoAtividade.findOne({
+    aluno: alunoId,
+    atividade: atividadeAnterior._id,
+    status: 'concluida'
+  });
+
+  return Boolean(progressoAnterior);
+}
+
 function validarRespostas(body, atividade) {
   if (!ehObjeto(body) || Object.keys(body).some(campo => campo !== 'respostas') || !Array.isArray(body.respostas)) {
     return false;
@@ -55,6 +75,51 @@ function validarRespostas(body, atividade) {
   return true;
 }
 
+// Rota para listar o mapa de missões sequenciais da turma
+router.get('/turma/:turmaId/mapa', async (req, res, next) => {
+  try {
+    const { turmaId } = req.params;
+    if (!mongoose.isValidObjectId(turmaId)) return erro400(res, 'O identificador da turma é inválido.');
+
+    const alunoId = req.usuario.id;
+    const atividades = await Atividade.find({ turma: turmaId, status: 'publicada' }).sort({ ordem: 1, _id: 1 });
+    const progressos = await ProgressoAtividade.find({ aluno: alunoId });
+
+    const agora = new Date();
+
+    const mapaMissoes = atividades.map((atividade, index) => {
+      const progresso = progressos.find(p => String(p.atividade) === String(atividade._id));
+      const concluida = progresso?.status === 'concluida';
+
+      let desbloqueada = false;
+      const ordemAtual = atividade.ordem || (index + 1);
+      if (ordemAtual === 1) {
+        desbloqueada = true;
+      } else {
+        const atividadeAnterior = atividades.find(a => (a.ordem || 0) === ordemAtual - 1) || atividades[index - 1];
+        const progressoAnterior = atividadeAnterior ? progressos.find(p => String(p.atividade) === String(atividadeAnterior._id)) : null;
+        desbloqueada = progressoAnterior?.status === 'concluida';
+      }
+
+      const atrasada = atividade.prazo && new Date(atividade.prazo) < agora;
+
+      return {
+        id: atividade._id,
+        titulo: atividade.titulo,
+        ordem: ordemAtual,
+        desbloqueada,
+        concluida,
+        atrasada,
+        prazo: atividade.prazo
+      };
+    });
+
+    return res.status(200).json({ sucesso: true, mapaMissoes });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post('/atividades/:atividadeId/iniciar', async (req, res, next) => {
   try {
     const { atividadeId } = req.params;
@@ -64,11 +129,21 @@ router.post('/atividades/:atividadeId/iniciar', async (req, res, next) => {
     const atividade = await buscarAtividadePublicada(atividadeId);
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
 
-    const aluno = req.usuario.id;
-    const existente = await ProgressoAtividade.findOne({ aluno, atividade: atividadeId });
+    const alunoId = req.usuario.id;
+
+    // Proteção Anti-Bypass (Desbloqueio Sequencial)
+    const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
+    if (!liberado) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso negado. Você precisa concluir a missão anterior para desbloquear esta atividade.'
+      });
+    }
+
+    const existente = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
     if (existente) return res.status(200).json({ sucesso: true, progresso: existente });
 
-    const progresso = new ProgressoAtividade({ aluno, atividade: atividadeId, status: 'iniciada' });
+    const progresso = new ProgressoAtividade({ aluno: alunoId, atividade: atividadeId, status: 'iniciada' });
     await progresso.save();
     return res.status(201).json({ sucesso: true, progresso });
   } catch (error) {

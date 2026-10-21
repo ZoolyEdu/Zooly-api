@@ -98,6 +98,11 @@ const atividadeSchema = new Schema(
       required: [true, 'O título da atividade é obrigatório.'],
       trim: true
     },
+    ordem: {
+      type: Number,
+      default: 1,
+      min: [1, 'A ordem mínima da atividade deve ser 1.']
+    },
     historia: {
       type: origemHistoriaSchema,
       required: [true, 'A história da atividade é obrigatória.']

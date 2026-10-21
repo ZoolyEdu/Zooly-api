@@ -7,7 +7,7 @@ import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
 
 const router = Router();
-const camposAtividadeEntrada = ['turma', 'titulo', 'historia', 'questoes', 'prazo'];
+const camposAtividadeEntrada = ['turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo'];
 
 router.use(autenticarToken, autorizarPerfil('professor'));
 
@@ -73,9 +73,10 @@ function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {})
 
 function validarCorpoEdicao(body) {
   return ehObjeto(body) &&
-    !temCampoDesconhecido(body, ['titulo', 'historia', 'questoes', 'prazo']) &&
+    !temCampoDesconhecido(body, ['titulo', 'ordem', 'historia', 'questoes', 'prazo']) &&
     typeof body.titulo === 'string' &&
     Boolean(body.titulo.trim()) &&
+    (body.ordem === undefined || (typeof body.ordem === 'number' && Number.isInteger(body.ordem) && body.ordem >= 1)) &&
     prazoDeEntradaValido(body.prazo) &&
     Object.hasOwn(body, 'historia') &&
     Object.hasOwn(body, 'questoes') &&
@@ -174,6 +175,7 @@ router.post('/', async (req, res, next) => {
       !mongoose.isValidObjectId(body.turma) ||
       typeof body.titulo !== 'string' ||
       !body.titulo.trim() ||
+      (body.ordem !== undefined && (typeof body.ordem !== 'number' || !Number.isInteger(body.ordem) || body.ordem < 1)) ||
       !prazoDeEntradaValido(body.prazo) ||
       !validarCamposAninhados(body)
     ) {
@@ -188,6 +190,7 @@ router.post('/', async (req, res, next) => {
       turma: body.turma,
       professorCriador: req.usuario.id,
       titulo: body.titulo,
+      ordem: body.ordem !== undefined ? body.ordem : 1,
       historia: body.historia,
       questoes: body.questoes,
       status: 'rascunho',
@@ -342,8 +345,10 @@ router.put('/:id', async (req, res, next) => {
       return rejeitarRequisicao(res, 'Os IDs enviados devem pertencer aos subdocumentos correspondentes desta atividade.');
     }
 
-    // Substitui o conjunto editável; turma, autor e status permanecem intactos.
     atividade.titulo = body.titulo;
+    if (body.ordem !== undefined) {
+      atividade.ordem = body.ordem;
+    }
     atividade.historia = body.historia;
     atividade.prazo = body.prazo ?? null;
     atividade.questoes = body.questoes.map(questao => ({ ...questao, respostasCorretas: [] }));
