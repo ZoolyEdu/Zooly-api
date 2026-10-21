@@ -13,7 +13,11 @@ const professorSchema = new mongoose.Schema(
       required: [true, 'O e-mail é obrigatório.'],
       unique: true,
       lowercase: true,
-      trim: true
+      trim: true,
+      match: [
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+        'Informe um e-mail válido.'
+      ]
     },
     senha: {
       type: String,
