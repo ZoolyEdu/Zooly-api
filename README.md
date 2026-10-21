@@ -58,3 +58,32 @@ Em desenvolvimento. As funcionalidades serão implementadas progressivamente e d
 Projeto acadêmico do curso de Desenvolvimento de Software Multiplataforma (DSM), da FATEC Registro.
 
 Equipe: KofiTech
+
+## Criação de atividades
+
+Para criar uma atividade, envie `POST /api/atividades` com um token de professor responsável pela turma. Cada alternativa deve incluir um `_id` válido, e `respostasCorretas` deve conter os `_id`s das alternativas corretas daquela questão:
+
+```json
+{
+  "turma": "507f1f77bcf86cd799439320",
+  "titulo": "Atividade de leitura",
+  "historia": {
+    "tipo": "oficial",
+    "historiaId": "507f1f77bcf86cd799439330"
+  },
+  "questoes": [
+    {
+      "enunciado": "Quais respostas estão corretas?",
+      "alternativas": [
+        { "_id": "507f1f77bcf86cd799439341", "texto": "Alternativa A" },
+        { "_id": "507f1f77bcf86cd799439342", "texto": "Alternativa B" }
+      ],
+      "respostasCorretas": ["507f1f77bcf86cd799439341"]
+    }
+  ]
+}
+```
+
+`historia` também pode usar `{ "tipo": "propria", "texto": "..." }`. A origem deve ser uma história oficial existente ou um texto próprio, e o status inicial `rascunho` é definido pelo servidor.
+
+Na edição completa por `PUT /api/atividades/:id`, mantenha os `_id`s das questões e alternativas existentes que deseja preservar. Esses IDs só podem ser reutilizados dentro da atividade e da questão a que já pertencem. Omita `_id` para questões ou alternativas novas; para marcar alternativas novas como corretas no mesmo envio, use índices começando em zero em `respostasCorretas` (por exemplo, `[0]` seleciona a primeira alternativa). A API converte os índices para os IDs gerados pelo Mongoose.
