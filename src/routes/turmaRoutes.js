@@ -20,6 +20,12 @@ async function obterProfessor(req) {
   return Professor.findById(req.usuario.id).select('escolas');
 }
 
+function professorTemAcesso(professor, turma) {
+  return professor.escolas.some(
+    escolaId => escolaId.toString() === turma.escola.toString()
+  );
+}
+
 function gerarCodigoPermanente() {
   return `TUR-${randomBytes(6).toString('hex').toUpperCase()}`;
 }
@@ -162,11 +168,8 @@ router.get('/:id', async (req, res, next) => {
 
     const turma = await Turma.findOne({
       _id: req.params.id,
-      escola: { $in: professor.escolas },
       arquivada: false
-    })
-      .populate('escola', 'nome codigoPermanente')
-      .populate('professorResponsavel', 'nome email');
+    });
 
     if (!turma) {
       return res.status(404).json({
@@ -174,6 +177,16 @@ router.get('/:id', async (req, res, next) => {
         mensagem: 'Turma não encontrada.'
       });
     }
+
+    if (!professorTemAcesso(professor, turma)) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso nao autorizado para esta turma.'
+      });
+    }
+
+    await turma.populate('escola', 'nome codigoPermanente');
+    await turma.populate('professorResponsavel', 'nome email');
 
     return res.status(200).json({ sucesso: true, turma });
   } catch (error) {
@@ -200,16 +213,19 @@ router.put('/:id', async (req, res, next) => {
       });
     }
 
-    const turma = await Turma.findOne({
-      _id: req.params.id,
-      escola: { $in: professor.escolas },
-      arquivada: false
-    });
+    const turma = await Turma.findById(req.params.id);
 
-    if (!turma) {
+    if (!turma || turma.arquivada) {
       return res.status(404).json({
         sucesso: false,
         mensagem: 'Turma não encontrada.'
+      });
+    }
+
+    if (!professorTemAcesso(professor, turma)) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso nao autorizado para esta turma.'
       });
     }
 
@@ -285,16 +301,19 @@ router.patch('/:id/senha-acesso', async (req, res, next) => {
       });
     }
 
-    const turma = await Turma.findOne({
-      _id: req.params.id,
-      escola: { $in: professor.escolas },
-      arquivada: false
-    });
+    const turma = await Turma.findById(req.params.id);
 
-    if (!turma) {
+    if (!turma || turma.arquivada) {
       return res.status(404).json({
         sucesso: false,
         mensagem: 'Turma não encontrada ou arquivada.'
+      });
+    }
+
+    if (!professorTemAcesso(professor, turma)) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso nao autorizado para esta turma.'
       });
     }
 
@@ -329,16 +348,19 @@ router.patch('/:id/arquivar', async (req, res, next) => {
       });
     }
 
-    const turma = await Turma.findOne({
-      _id: req.params.id,
-      escola: { $in: professor.escolas },
-      arquivada: false
-    });
+    const turma = await Turma.findById(req.params.id);
 
-    if (!turma) {
+    if (!turma || turma.arquivada) {
       return res.status(404).json({
         sucesso: false,
         mensagem: 'Turma não encontrada ou já arquivada.'
+      });
+    }
+
+    if (!professorTemAcesso(professor, turma)) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso nao autorizado para esta turma.'
       });
     }
 
