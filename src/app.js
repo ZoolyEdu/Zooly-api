@@ -7,6 +7,7 @@ import authRoutes from './routes/authRoutes.js';
 import escolaRoutes from './routes/escolaRoutes.js';
 import turmaRoutes from './routes/turmaRoutes.js';
 import alunoRoutes from './routes/alunoRoutes.js';
+import historiaRoutes from './routes/historiaRoutes.js';
 
 
 const app = express();
@@ -29,6 +30,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/escolas', escolaRoutes);
 app.use('/api/turmas', turmaRoutes);
 app.use('/api/alunos', alunoRoutes);
+app.use('/api/historias', historiaRoutes);
 
 // Rota não encontrada (404)
 app.use((req, res) => {
