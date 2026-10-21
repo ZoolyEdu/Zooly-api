@@ -113,6 +113,14 @@ const atividadeSchema = new Schema(
         message: 'O status deve ser rascunho ou publicada.'
       },
       default: 'rascunho'
+    },
+    publicadoEm: {
+      type: Date,
+      default: null
+    },
+    prazo: {
+      type: Date,
+      default: null
     }
   },
   { timestamps: true }
@@ -140,6 +148,15 @@ atividadeSchema.pre('validate', function validarOrigemHistoria() {
       'historia',
       'Uma história própria exige texto não vazio e não aceita historiaId.'
     );
+  }
+});
+
+atividadeSchema.pre('validate', function validarDataPublicacao() {
+  if (this.status === 'publicada' && !this.publicadoEm) {
+    this.invalidate('publicadoEm', 'Atividades publicadas devem registrar a data de publicação.');
+  }
+  if (this.status === 'rascunho' && this.publicadoEm) {
+    this.invalidate('publicadoEm', 'Rascunhos não podem ter data de publicação.');
   }
 });
 

@@ -57,7 +57,10 @@ function instalarMocks() {
   ]);
   historias = new Map([[historiaId, { _id: historiaId, titulo: 'História oficial', conteudo: 'Conteúdo oficial.' }]]);
   atividades = new Map();
-  chamadas = { turma: [], historia: [], atividade: [], criacao: 0 };
+  chamadas = {
+    turma: [], historia: [], atividade: [], criacao: 0,
+    filtroLista: null, ordenacao: null, exclusao: 0
+  };
 
   substituir(Turma, 'findById', async id => {
     chamadas.turma.push(String(id));
@@ -72,10 +75,29 @@ function instalarMocks() {
     const encontrada = atividades.get(String(id));
     return encontrada ? new Atividade(encontrada) : null;
   });
+  substituir(Atividade, 'find', filtro => {
+    chamadas.filtroLista = filtro;
+    return {
+      sort: async ordenacao => {
+        chamadas.ordenacao = ordenacao;
+        return [...atividades.values()]
+          .filter(atividade => atividade.status === filtro.status)
+          .sort((a, b) => {
+            const porData = new Date(a.publicadoEm) - new Date(b.publicadoEm);
+            return porData || String(a._id).localeCompare(String(b._id));
+          });
+      }
+    };
+  });
   substituir(Atividade, 'prototype.save', async function salvarMock() {
     chamadas.criacao += 1;
     atividades.set(String(this._id), this.toObject());
     return this;
+  });
+  substituir(Atividade, 'prototype.deleteOne', async function excluirMock() {
+    chamadas.exclusao += 1;
+    atividades.delete(String(this._id));
+    return { deletedCount: 1 };
   });
 }
 
@@ -122,6 +144,30 @@ async function put(id, body, accessToken) {
   });
 }
 
+async function patch(id, body = {}, accessToken) {
+  return fetch(`${baseUrl}/atividades/${id}/publicar`, {
+    method: 'PATCH',
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+}
+
+async function remover(id, accessToken) {
+  return fetch(`${baseUrl}/atividades/${id}`, {
+    method: 'DELETE',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+}
+
+async function listarPublicadas(accessToken) {
+  return fetch(`${baseUrl}/atividades/publicadas`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+}
+
 function registrarAtividade(status = 'rascunho', autor = professorId) {
   const atividade = new Atividade({
     ...atividadeBody({
@@ -145,7 +191,8 @@ function registrarAtividade(status = 'rascunho', autor = professorId) {
     }),
     _id: atividadeId,
     professorCriador: autor,
-    status
+    status,
+    publicadoEm: status === 'publicada' ? new Date('2026-09-01T12:00:00.000Z') : null
   });
   atividades.set(atividadeId, atividade.toObject());
 }
@@ -611,4 +658,141 @@ test('edição rejeita ID de alternativa pertencente a outra questão da mesma a
 
   assert.equal(resposta.status, 400);
   assert.equal(chamadas.criacao, 0);
+});
+
+test('publicação exige autenticação, perfil de professor e autoria', async () => {
+  registrarAtividade();
+
+  assert.equal((await patch(atividadeId)).status, 401);
+  assert.equal((await patch(atividadeId, {}, emitirToken('aluno'))).status, 403);
+  assert.equal((await patch(atividadeId, {}, emitirToken('professor', professorAlternativoId))).status, 403);
+  assert.equal((await remover(atividadeId)).status, 401);
+  assert.equal((await remover(atividadeId, emitirToken('aluno'))).status, 403);
+  assert.equal((await remover(atividadeId, emitirToken('professor', professorAlternativoId))).status, 403);
+  assert.equal(chamadas.criacao, 0);
+  assert.equal(chamadas.exclusao, 0);
+});
+
+test('criador publica rascunho e a API registra data de publicação', async () => {
+  registrarAtividade();
+
+  const resposta = await patch(atividadeId, {}, emitirToken());
+  const corpo = await resposta.json();
+  const salvo = atividades.get(atividadeId);
+
+  assert.equal(resposta.status, 200);
+  assert.equal(corpo.atividade.status, 'publicada');
+  assert.ok(Number.isFinite(Date.parse(corpo.atividade.publicadoEm)));
+  assert.equal(salvo.status, 'publicada');
+  assert.ok(salvo.publicadoEm instanceof Date);
+  assert.equal(chamadas.criacao, 1);
+});
+
+test('publicação rejeita ID inválido, atividade inexistente, atividade já publicada e corpo inesperado', async () => {
+  assert.equal((await patch('id-invalido', {}, emitirToken())).status, 400);
+  assert.equal((await patch(atividadeId, {}, emitirToken())).status, 404);
+
+  registrarAtividade('publicada');
+  assert.equal((await patch(atividadeId, {}, emitirToken())).status, 409);
+  assert.equal((await patch(atividadeId, { status: 'publicada' }, emitirToken())).status, 400);
+  assert.equal((await patch(atividadeId, [], emitirToken())).status, 400);
+  assert.equal(chamadas.criacao, 0);
+});
+
+test('publicação rejeita atividade que falha nas validações do modelo', async () => {
+  registrarAtividade();
+  const documento = atividades.get(atividadeId);
+  documento.questoes[0].respostasCorretas = ['507f1f77bcf86cd799439399'];
+  atividades.set(atividadeId, documento);
+
+  const resposta = await patch(atividadeId, {}, emitirToken());
+
+  assert.equal(resposta.status, 400);
+  assert.equal(atividades.get(atividadeId).status, 'rascunho');
+  assert.equal(chamadas.criacao, 0);
+});
+
+test('prazo é opcional, aceita data válida e rejeita valor inválido', async () => {
+  const semPrazo = await post(atividadeBody(), emitirToken());
+  const corpoSemPrazo = await semPrazo.json();
+  assert.equal(semPrazo.status, 201);
+  assert.equal(corpoSemPrazo.atividade.prazo, null);
+
+  const prazoValido = '2026-12-31T23:59:00.000Z';
+  const comPrazo = await post(atividadeBody({ prazo: prazoValido }), emitirToken());
+  const corpoComPrazo = await comPrazo.json();
+  assert.equal(comPrazo.status, 201);
+  assert.equal(new Date(corpoComPrazo.atividade.prazo).toISOString(), prazoValido);
+
+  assert.equal((await post(atividadeBody({ prazo: 'não-é-uma-data' }), emitirToken())).status, 400);
+  assert.equal(chamadas.criacao, 2);
+});
+
+test('atividades publicadas são ordenadas por publicação e desempate estável, mesmo após o prazo', async () => {
+  const dataAntiga = new Date('2026-08-01T00:00:00.000Z');
+  const dataEmpate = new Date('2026-09-01T00:00:00.000Z');
+  const adicionar = (id, status, publicadoEm, prazo = null) => {
+    const atividade = new Atividade({
+      ...atividadeBody(),
+      _id: id,
+      status,
+      publicadoEm,
+      prazo
+    });
+    atividades.set(id, atividade.toObject());
+  };
+  const idPrimeiraEmpatada = '507f1f77bcf86cd799439320';
+  const idSegundaEmpatada = '507f1f77bcf86cd799439321';
+  adicionar('507f1f77bcf86cd799439323', 'publicada', dataEmpate, new Date('2020-01-01T00:00:00.000Z'));
+  adicionar(idSegundaEmpatada, 'publicada', dataEmpate);
+  adicionar('507f1f77bcf86cd799439324', 'rascunho', null);
+  adicionar(idPrimeiraEmpatada, 'publicada', dataEmpate);
+  adicionar('507f1f77bcf86cd799439325', 'publicada', dataAntiga);
+
+  const resposta = await listarPublicadas(emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(corpo.atividades.map(atividade => String(atividade._id)), [
+    '507f1f77bcf86cd799439325', idPrimeiraEmpatada, idSegundaEmpatada, '507f1f77bcf86cd799439323'
+  ]);
+  assert.deepEqual(chamadas.filtroLista, { status: 'publicada' });
+  assert.deepEqual(chamadas.ordenacao, { publicadoEm: 1, _id: 1 });
+});
+
+test('criador exclui atividade sem registros relacionados', async () => {
+  registrarAtividade();
+
+  const resposta = await remover(atividadeId, emitirToken());
+
+  assert.equal(resposta.status, 200);
+  assert.equal(atividades.has(atividadeId), false);
+  assert.equal(chamadas.exclusao, 1);
+});
+
+test('exclusão rejeita ID inválido e atividade inexistente', async () => {
+  assert.equal((await remover('id-invalido', emitirToken())).status, 400);
+  assert.equal((await remover(atividadeId, emitirToken())).status, 404);
+  assert.equal(chamadas.exclusao, 0);
+});
+
+test('exclusão é bloqueada quando um modelo registrado referencia a atividade', async () => {
+  registrarAtividade();
+  const nomeModelo = 'RegistroAtividadeTesteIssue21';
+  const ModeloRegistro = mongoose.model(nomeModelo, new mongoose.Schema({
+    atividade: { type: mongoose.Schema.Types.ObjectId, ref: 'Atividade' }
+  }));
+  const existeOriginal = ModeloRegistro.exists;
+  ModeloRegistro.exists = async filtro => String(filtro.atividade) === atividadeId ? { _id: 'registro' } : null;
+
+  try {
+    const resposta = await remover(atividadeId, emitirToken());
+
+    assert.equal(resposta.status, 409);
+    assert.equal(atividades.has(atividadeId), true);
+    assert.equal(chamadas.exclusao, 0);
+  } finally {
+    ModeloRegistro.exists = existeOriginal;
+    mongoose.deleteModel(nomeModelo);
+  }
 });

@@ -7,7 +7,7 @@ import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
 
 const router = Router();
-const camposAtividadeEntrada = ['turma', 'titulo', 'historia', 'questoes'];
+const camposAtividadeEntrada = ['turma', 'titulo', 'historia', 'questoes', 'prazo'];
 
 router.use(autenticarToken, autorizarPerfil('professor'));
 
@@ -21,6 +21,11 @@ function temCampoDesconhecido(objeto, camposPermitidos) {
 
 function rejeitarRequisicao(res, mensagem) {
   return res.status(400).json({ sucesso: false, mensagem });
+}
+
+function prazoDeEntradaValido(prazo) {
+  return prazo === undefined || prazo === null ||
+    (typeof prazo === 'string' && Number.isFinite(Date.parse(prazo)));
 }
 
 function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {}) {
@@ -68,9 +73,10 @@ function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {})
 
 function validarCorpoEdicao(body) {
   return ehObjeto(body) &&
-    !temCampoDesconhecido(body, ['titulo', 'historia', 'questoes']) &&
+    !temCampoDesconhecido(body, ['titulo', 'historia', 'questoes', 'prazo']) &&
     typeof body.titulo === 'string' &&
     Boolean(body.titulo.trim()) &&
+    prazoDeEntradaValido(body.prazo) &&
     Object.hasOwn(body, 'historia') &&
     Object.hasOwn(body, 'questoes') &&
     Array.isArray(body.questoes) &&
@@ -168,6 +174,7 @@ router.post('/', async (req, res, next) => {
       !mongoose.isValidObjectId(body.turma) ||
       typeof body.titulo !== 'string' ||
       !body.titulo.trim() ||
+      !prazoDeEntradaValido(body.prazo) ||
       !validarCamposAninhados(body)
     ) {
       return rejeitarRequisicao(res, 'Os dados da atividade são inválidos.');
@@ -183,7 +190,8 @@ router.post('/', async (req, res, next) => {
       titulo: body.titulo,
       historia: body.historia,
       questoes: body.questoes,
-      status: 'rascunho'
+      status: 'rascunho',
+      prazo: body.prazo ?? null
     });
 
     await atividade.validate();
@@ -209,6 +217,102 @@ router.post('/', async (req, res, next) => {
       mensagem: 'Atividade criada com sucesso.',
       atividade
     });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/publicadas', async (req, res, next) => {
+  try {
+    const atividades = await Atividade.find({ status: 'publicada' })
+      .sort({ publicadoEm: 1, _id: 1 });
+    return res.status(200).json({ sucesso: true, atividades });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/:id/publicar', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return rejeitarRequisicao(res, 'O identificador da atividade é inválido.');
+    }
+    if (req.body !== undefined && (!ehObjeto(req.body) || Object.keys(req.body).length > 0)) {
+      return rejeitarRequisicao(res, 'A publicação não aceita campos enviados pelo cliente.');
+    }
+
+    const atividade = await Atividade.findById(req.params.id);
+    if (!atividade) {
+      return res.status(404).json({ sucesso: false, mensagem: 'Atividade não encontrada.' });
+    }
+    if (String(atividade.professorCriador) !== String(req.usuario.id)) {
+      return res.status(403).json({ sucesso: false, mensagem: 'Somente o autor pode publicar esta atividade.' });
+    }
+    if (atividade.status !== 'rascunho') {
+      return res.status(409).json({ sucesso: false, mensagem: 'Somente rascunhos podem ser publicados.' });
+    }
+
+    atividade.status = 'publicada';
+    atividade.publicadoEm = new Date();
+    await atividade.validate();
+    await atividade.save();
+
+    return res.status(200).json({
+      sucesso: true,
+      mensagem: 'Atividade publicada com sucesso.',
+      atividade
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+function pathsReferenciandoAtividade(schema, prefixo = '') {
+  const paths = [];
+  schema.eachPath((path, tipo) => {
+    const caminho = `${prefixo}${path}`;
+    const refsAtividade = tipo.options?.ref === 'Atividade' ||
+      tipo.caster?.options?.ref === 'Atividade' ||
+      tipo.$embeddedSchemaType?.options?.ref === 'Atividade';
+    if (refsAtividade) paths.push(caminho);
+    if (tipo.schema) paths.push(...pathsReferenciandoAtividade(tipo.schema, `${caminho}.`));
+  });
+  return paths;
+}
+
+async function existeDadoRelacionado(atividadeId) {
+  for (const nomeModelo of mongoose.modelNames()) {
+    if (nomeModelo === Atividade.modelName) continue;
+    const Modelo = mongoose.model(nomeModelo);
+    for (const path of pathsReferenciandoAtividade(Modelo.schema)) {
+      if (await Modelo.exists({ [path]: atividadeId })) return true;
+    }
+  }
+  return false;
+}
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return rejeitarRequisicao(res, 'O identificador da atividade é inválido.');
+    }
+
+    const atividade = await Atividade.findById(req.params.id);
+    if (!atividade) {
+      return res.status(404).json({ sucesso: false, mensagem: 'Atividade não encontrada.' });
+    }
+    if (String(atividade.professorCriador) !== String(req.usuario.id)) {
+      return res.status(403).json({ sucesso: false, mensagem: 'Somente o autor pode excluir esta atividade.' });
+    }
+    if (await existeDadoRelacionado(atividade._id)) {
+      return res.status(409).json({
+        sucesso: false,
+        mensagem: 'A atividade possui registros relacionados e não pode ser excluída.'
+      });
+    }
+
+    await atividade.deleteOne();
+    return res.status(200).json({ sucesso: true, mensagem: 'Atividade excluída com sucesso.' });
   } catch (error) {
     return next(error);
   }
@@ -241,6 +345,7 @@ router.put('/:id', async (req, res, next) => {
     // Substitui o conjunto editável; turma, autor e status permanecem intactos.
     atividade.titulo = body.titulo;
     atividade.historia = body.historia;
+    atividade.prazo = body.prazo ?? null;
     atividade.questoes = body.questoes.map(questao => ({ ...questao, respostasCorretas: [] }));
     if (!aplicarRespostasPorIndice(atividade, body.questoes)) {
       return rejeitarRequisicao(res, 'O índice de uma resposta correta não corresponde a uma alternativa.');
