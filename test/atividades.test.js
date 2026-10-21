@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import app from '../src/app.js';
 import Atividade from '../src/models/Atividade.js';
+import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
 import Historia from '../src/models/Historia.js';
 import Turma from '../src/models/Turma.js';
 
@@ -75,6 +76,7 @@ function instalarMocks() {
     const encontrada = atividades.get(String(id));
     return encontrada ? new Atividade(encontrada) : null;
   });
+  substituir(ProgressoAtividade, 'exists', async () => null);
   substituir(Atividade, 'find', filtro => {
     chamadas.filtroLista = filtro;
     return {
@@ -246,7 +248,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chave, metodoOriginal] of originais) {
     const [nomeModelo, nomeMetodo] = chave.split('#');
-    const modelo = { Turma, Historia, Atividade }[nomeModelo];
+    const modelo = { Turma, Historia, Atividade, ProgressoAtividade }[nomeModelo];
     const [alvo, nome] = nomeMetodo.includes('.') ? nomeMetodo.split('.') : ['static', nomeMetodo];
     const objeto = alvo === 'prototype' ? modelo.prototype : modelo;
     objeto[nome] = metodoOriginal;
