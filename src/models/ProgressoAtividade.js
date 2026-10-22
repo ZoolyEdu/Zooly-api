@@ -48,6 +48,10 @@ const progressoAtividadeSchema = new Schema({
   respostas: {
     type: [respostaSchema],
     default: []
+  },
+  respostasRegistradasEm: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

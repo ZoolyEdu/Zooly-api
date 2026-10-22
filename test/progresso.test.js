@@ -92,7 +92,7 @@ function instalarMocks() {
     if (filtro?.aluno) lista = lista.filter(p => String(p.aluno) === String(filtro.aluno));
     if (filtro?.atividade) lista = lista.filter(p => String(p.atividade) === String(filtro.atividade));
     if (filtro?._id) lista = lista.filter(p => String(p._id) === String(filtro._id));
-
+    if (filtro?.status) lista = lista.filter(p => p.status === filtro.status);
     const doc = lista[0] ?? null;
     if (doc) {
       // Anexa o método save para evitar o erro 500 no controller
@@ -344,4 +344,37 @@ test('trata com segurança e bloqueia desbloqueio de atividades sem ordem válid
 
   const resposta = await iniciar(atividadeSemOrdemId, token());
   assert.equal(resposta.status, 403);
+});
+test('1 e 2: primeira atividade é permitida, a segunda permanece bloqueada sem a primeira concluída', async () => {
+  const tokenA = token('aluno', alunoAId);
+  assert.equal((await iniciar(atividadeId, tokenA)).status, 201); // Ordem 1
+  assert.equal((await iniciar(atividadeOrdem2Id, tokenA)).status, 403); // Ordem 2 bloqueada
+});
+
+test('3 e 4: envio de respostas e conclusão em atividade bloqueada retorna 403', async () => {
+  const tokenA = token('aluno', alunoAId);
+  assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeOrdem2Id, tokenA)).status, 403);
+  assert.equal((await concluir(atividadeOrdem2Id, tokenA)).status, 403);
+});
+
+test('5, 6 e 7: trata lacunas, ordens duplicadas e ignora desbloqueios automáticos sem ordem válida', async () => {
+  const atividadeSemOrdemId = '507f1f77bcf86cd799439499';
+  atividades.set(atividadeSemOrdemId, { _id: atividadeSemOrdemId, turma: turmaAId, ordem: null, status: 'publicada', questoes: [] });
+  assert.equal((await iniciar(atividadeSemOrdemId, token())).status, 403);
+});
+
+test('8: aluno não consegue acessar mapa, iniciar, responder ou concluir atividades de outra turma', async () => {
+  const tokenB = token('aluno', alunoBId); // Turma B
+  assert.equal((await request(`/progresso/turma/${turmaAId}/mapa`, { accessToken: tokenB })).status, 403);
+  assert.equal((await iniciar(atividadeId, tokenB)).status, 403);
+  assert.equal((await enviarRespostas([], atividadeId, tokenB)).status, 403);
+  assert.equal((await concluir(atividadeId, tokenB)).status, 403);
+});
+
+test('9: respostasRegistradasEm é persistido e recuperado corretamente', async () => {
+  await iniciar(atividadeId, token());
+  const resposta = await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, token());
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.ok(corpo.progresso.respostasRegistradasEm);
 });
