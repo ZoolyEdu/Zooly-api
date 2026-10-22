@@ -100,6 +100,7 @@ router.put('/atividades/:atividadeId/respostas', async (req, res, next) => {
       questaoId: resposta.questaoId,
       alternativasSelecionadas: resposta.alternativasSelecionadas
     }));
+    progresso.respostasRegistradasEm = new Date();
     await progresso.save();
     return res.status(200).json({ sucesso: true, progresso });
   } catch (error) {
