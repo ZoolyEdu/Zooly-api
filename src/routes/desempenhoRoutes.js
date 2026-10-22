@@ -8,6 +8,7 @@ import Turma from '../models/Turma.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
 import { calcularPeriodoSemanal, consolidarDesempenho } from '../services/desempenhoService.js';
+import { gerarRelatorioPdf } from '../services/relatorioPdfService.js';
 
 const router = Router();
 router.use(autenticarToken, autorizarPerfil('professor'));
@@ -39,6 +40,46 @@ function responderErro(res, erro) {
   return res.status(erro).json({ sucesso: false, mensagem: mensagens[erro] });
 }
 
+async function obterRelatorioSemanal(turmaId, professorId, data) {
+  const periodo = calcularPeriodoSemanal(data);
+  if (!periodo) return { erro: 400 };
+
+  const acesso = await turmaAutorizada(turmaId, professorId);
+  if (acesso.erro) return acesso;
+
+  const alunos = await Aluno.find({ turma: acesso.turma._id }).select('ra nomeCompleto turma').sort({ nomeCompleto: 1, ra: 1 });
+  const atividades = await Atividade.find({ turma: acesso.turma._id, status: 'publicada' });
+  const idsAtividades = atividades.map(atividade => atividade._id);
+  const desempenho = await Promise.all(alunos.map(async aluno => {
+    const progressos = idsAtividades.length
+      ? await ProgressoAtividade.find({ aluno: aluno._id, atividade: { $in: idsAtividades } })
+      : [];
+    return consolidarDesempenho(aluno, atividades, progressos, periodo);
+  }));
+  const indicadores = desempenho.reduce((total, item) => {
+    for (const campo of ['atividadesIniciadas', 'atividadesConcluidas', 'respostasRegistradas', 'respostasSemData', 'acertos', 'erros']) {
+      total[campo] += item.indicadores[campo];
+    }
+    return total;
+  }, { atividadesIniciadas: 0, atividadesConcluidas: 0, respostasRegistradas: 0, respostasSemData: 0, acertos: 0, erros: 0 });
+  indicadores.percentualAcerto = indicadores.respostasRegistradas
+    ? Math.round((indicadores.acertos / indicadores.respostasRegistradas) * 10000) / 100
+    : null;
+
+  return {
+    turma: { id: acesso.turma._id, nome: acesso.turma.nome },
+    periodo: {
+      inicio: periodo.inicio.toISOString(),
+      fim: periodo.fim.toISOString(),
+      fuso: fusoRelatorio,
+      disponivel: periodo.fim.getTime() <= Date.now()
+    },
+    totalAlunos: desempenho.length,
+    indicadores,
+    alunos: desempenho
+  };
+}
+
 router.get('/turmas/:turmaId', async (req, res, next) => {
   try {
     const acesso = await turmaAutorizada(req.params.turmaId, req.usuario.id);
@@ -51,41 +92,27 @@ router.get('/turmas/:turmaId', async (req, res, next) => {
 
 router.get('/turmas/:turmaId/semanal', async (req, res, next) => {
   try {
-    const periodo = calcularPeriodoSemanal(req.query.data);
-    if (!periodo) return responderErro(res, 400);
-    const acesso = await turmaAutorizada(req.params.turmaId, req.usuario.id);
-    if (acesso.erro) return responderErro(res, acesso.erro);
-    const alunos = await Aluno.find({ turma: acesso.turma._id }).select('ra nomeCompleto turma').sort({ nomeCompleto: 1, ra: 1 });
-    const atividades = await Atividade.find({ turma: acesso.turma._id, status: 'publicada' });
-    const idsAtividades = atividades.map(atividade => atividade._id);
-    const desempenho = await Promise.all(alunos.map(async aluno => {
-      const progressos = idsAtividades.length
-        ? await ProgressoAtividade.find({ aluno: aluno._id, atividade: { $in: idsAtividades } })
-        : [];
-      return consolidarDesempenho(aluno, atividades, progressos, periodo);
-    }));
-    const indicadores = desempenho.reduce((total, item) => {
-      for (const campo of ['atividadesIniciadas', 'atividadesConcluidas', 'respostasRegistradas', 'respostasSemData', 'acertos', 'erros']) {
-        total[campo] += item.indicadores[campo];
-      }
-      return total;
-    }, { atividadesIniciadas: 0, atividadesConcluidas: 0, respostasRegistradas: 0, respostasSemData: 0, acertos: 0, erros: 0 });
-    indicadores.percentualAcerto = indicadores.respostasRegistradas
-      ? Math.round((indicadores.acertos / indicadores.respostasRegistradas) * 10000) / 100
-      : null;
-    return res.json({
-      sucesso: true,
-      turma: { id: acesso.turma._id, nome: acesso.turma.nome },
-      periodo: {
-        inicio: periodo.inicio.toISOString(),
-        fim: periodo.fim.toISOString(),
-        fuso: fusoRelatorio,
-        disponivel: periodo.fim.getTime() <= Date.now()
-      },
-      totalAlunos: desempenho.length,
-      indicadores,
-      alunos: desempenho
+    const relatorio = await obterRelatorioSemanal(req.params.turmaId, req.usuario.id, req.query.data);
+    if (relatorio.erro) return responderErro(res, relatorio.erro);
+    return res.json({ sucesso: true, ...relatorio });
+  } catch (error) { return next(error); }
+});
+
+router.get('/turmas/:turmaId/semanal/pdf', async (req, res, next) => {
+  try {
+    const relatorio = await obterRelatorioSemanal(req.params.turmaId, req.usuario.id, req.query.data);
+    if (relatorio.erro) return responderErro(res, relatorio.erro);
+
+    const pdf = await gerarRelatorioPdf(relatorio);
+    const nomeSeguro = String(relatorio.turma.nome ?? 'turma')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'turma';
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="relatorio-${nomeSeguro}-semanal.pdf"`,
+      'Content-Length': pdf.length
     });
+    return res.status(200).send(pdf);
   } catch (error) { return next(error); }
 });
 

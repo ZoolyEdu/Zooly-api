@@ -32,6 +32,15 @@ function substituir(modelo, metodo, fn) {
 function consulta(value) {
   return { select() { return this; }, sort() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } };
 }
+function extrairTextoPdf(pdf) {
+  const texto = pdf.toString('latin1');
+  const partes = [...texto.matchAll(/\[([\s\S]*?)\]\s*TJ/g)].flatMap(match =>
+    [...match[1].matchAll(/<([0-9a-f]+)>/gi)].map(item =>
+      new TextDecoder('windows-1252').decode(Buffer.from(item[1], 'hex'))
+    )
+  );
+  return partes.join('');
+}
 function token(tipo = 'professor', subject = professorId) {
   return jwt.sign({ tipo }, segredo, { subject, expiresIn: '5m' });
 }
@@ -159,4 +168,54 @@ test('professor não consulta outra escola e trocar ID de aluno não amplia aces
   assert.equal((await get(`/desempenho/turmas/${turmaB}`, token())).status, 403);
   assert.equal((await get(`/desempenho/turmas/${turmaB}/semanal?data=2026-10-21`, token())).status, 403);
   assert.equal((await get(`/desempenho/alunos/${alunoB}`, token())).status, 404);
+});
+
+test('exporta PDF semanal válido com cabeçalhos, turma, período e indicadores', async () => {
+  const response = await get(`/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-10-21`, token());
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /^application\/pdf(?:;|$)/);
+  assert.match(response.headers.get('content-disposition'), /^attachment; filename="relatorio-A-semanal\.pdf"$/);
+
+  const pdf = Buffer.from(await response.arrayBuffer());
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  const conteudoPdf = extrairTextoPdf(pdf);
+  assert.match(conteudoPdf, /Relatório semanal de desempenho/);
+  assert.match(conteudoPdf, /Turma: A/);
+  assert.match(conteudoPdf, /Período: 19\/10\/2026 00:00 até 26\/10\/2026 00:00 \(America\/Sao_Paulo; fim exclusivo\)/);
+  assert.match(conteudoPdf, /Concluídas/);
+  assert.match(conteudoPdf, /Ana/);
+});
+
+test('PDF semanal aplica validação de data, existência, autenticação e autorização da turma', async () => {
+  const caminho = `/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-10-21`;
+  assert.equal((await get(caminho)).status, 401);
+  assert.equal((await get(caminho, token('aluno', alunoA))).status, 403);
+  assert.equal((await get(`/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-02-30`, token())).status, 400);
+  assert.equal((await get('/desempenho/turmas/507f1f77bcf86cd799439199/semanal/pdf?data=2026-10-21', token())).status, 404);
+  assert.equal((await get(`/desempenho/turmas/${turmaB}/semanal/pdf?data=2026-10-21`, token())).status, 403);
+});
+
+test('PDF pagina tabela com muitos alunos, repete o cabeçalho e preserva textos longos e valores ausentes', async () => {
+  const muitosAlunos = Array.from({ length: 42 }, (_, indice) => ({
+    _id: `507f1f77bcf86cd79944${String(indice + 100).padStart(4, '0')}`,
+    ra: indice === 0 ? null : `RA-${indice + 1}`,
+    nomeCompleto: indice === 0 ? null : `Estudante ${indice + 1} com nome longo para verificar a quebra adequada de linha na tabela`
+  }));
+  substituir(Aluno, 'find', () => consulta(muitosAlunos));
+
+  const response = await get(`/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-10-21`, token());
+  assert.equal(response.status, 200);
+  const pdf = Buffer.from(await response.arrayBuffer());
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  const texto = pdf.toString('latin1');
+  const pagina = texto.match(/\/Type \/Pages[\s\S]*?\/Count (\d+)/);
+  assert.ok(pagina);
+  assert.ok(Number(pagina[1]) > 1);
+
+  const textoExtraido = extrairTextoPdf(pdf);
+  assert.match(textoExtraido, /Nome não informado/);
+  assert.match(textoExtraido, /Estudante 42 com nome longo/);
+  assert.match(textoExtraido, /Sem dados/);
+  assert.match(textoExtraido, /—/);
+  assert.ok((textoExtraido.match(/Aluno/g) ?? []).length >= Number(pagina[1]));
 });
