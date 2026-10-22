@@ -131,6 +131,7 @@ test('respostas são persistidas no progresso do aluno e recuperadas em nova con
 
   assert.equal(resposta.status, 200);
   assert.equal(corpoResposta.progresso.respostas.length, 2);
+  assert.ok(corpoResposta.progresso.respostasRegistradasEm);
   assert.deepEqual(corpoResposta.progresso.respostas[0].alternativasSelecionadas.map(String), [alternativaAId, alternativaBId]);
 
   const consulta = await request(`/progresso/atividades/${atividadeId}`, { accessToken: token() });
