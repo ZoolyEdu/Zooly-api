@@ -131,6 +131,8 @@ const atividadeSchema = new Schema(
   { timestamps: true }
 );
 
+atividadeSchema.index({ turma: 1, ordem: 1 }, { unique: true });
+
 atividadeSchema.pre('validate', function validarOrigemHistoria() {
   if (!this.historia) return;
 

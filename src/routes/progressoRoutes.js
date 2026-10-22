@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import Atividade from '../models/Atividade.js';
 import ProgressoAtividade from '../models/ProgressoAtividade.js';
+import Turma from '../models/Turma.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
 
@@ -25,16 +26,22 @@ async function buscarAtividadePublicada(id) {
   return atividade?.status === 'publicada' ? atividade : null;
 }
 
+async function validarVinculoTurma(alunoId, turmaId) {
+  const turma = await Turma.findOne({ _id: turmaId, alunos: alunoId });
+  return Boolean(turma);
+}
+
 async function validarDesbloqueioSequencial(alunoId, atividadeAtual) {
   const ordemAtual = atividadeAtual.ordem || 1;
   if (ordemAtual === 1) return true;
 
   const atividadeAnterior = await Atividade.findOne({
     turma: atividadeAtual.turma,
-    ordem: ordemAtual - 1
+    ordem: ordemAtual - 1,
+    status: 'publicada'
   });
 
-  if (!atividadeAnterior) return true;
+  if (!atividadeAnterior) return false;
 
   const progressoAnterior = await ProgressoAtividade.findOne({
     aluno: alunoId,
@@ -75,13 +82,13 @@ function validarRespostas(body, atividade) {
   return true;
 }
 
-// Rota para listar o mapa de missões sequenciais da turma
 router.get('/turma/:turmaId/mapa', async (req, res, next) => {
   try {
     const { turmaId } = req.params;
     if (!mongoose.isValidObjectId(turmaId)) return erro400(res, 'O identificador da turma é inválido.');
 
     const alunoId = req.usuario.id;
+    
     const atividades = await Atividade.find({ turma: turmaId, status: 'publicada' }).sort({ ordem: 1, _id: 1 });
     const progressos = await ProgressoAtividade.find({ aluno: alunoId });
 
@@ -96,9 +103,9 @@ router.get('/turma/:turmaId/mapa', async (req, res, next) => {
       if (ordemAtual === 1) {
         desbloqueada = true;
       } else {
-        const atividadeAnterior = atividades.find(a => (a.ordem || 0) === ordemAtual - 1) || atividades[index - 1];
+        const atividadeAnterior = atividades.find(a => (a.ordem || 0) === ordemAtual - 1);
         const progressoAnterior = atividadeAnterior ? progressos.find(p => String(p.atividade) === String(atividadeAnterior._id)) : null;
-        desbloqueada = progressoAnterior?.status === 'concluida';
+        desbloqueada = Boolean(progressoAnterior?.status === 'concluida');
       }
 
       const atrasada = atividade.prazo && new Date(atividade.prazo) < agora;
@@ -131,7 +138,6 @@ router.post('/atividades/:atividadeId/iniciar', async (req, res, next) => {
 
     const alunoId = req.usuario.id;
 
-    // Proteção Anti-Bypass (Desbloqueio Sequencial)
     const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
     if (!liberado) {
       return res.status(403).json({
@@ -168,7 +174,16 @@ router.put('/atividades/:atividadeId/respostas', async (req, res, next) => {
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
     if (!validarRespostas(req.body, atividade)) return erro400(res, 'As respostas são inválidas.');
 
-    const progresso = await ProgressoAtividade.findOne({ aluno: req.usuario.id, atividade: atividadeId });
+    const alunoId = req.usuario.id;
+    const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
+    if (!liberado) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso negado. A atividade anterior precisa estar concluída.'
+      });
+    }
+
+    const progresso = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
     if (!progresso) return res.status(404).json({ sucesso: false, mensagem: 'O aluno ainda não iniciou esta atividade.' });
 
     progresso.respostas = req.body.respostas.map(resposta => ({
@@ -188,8 +203,21 @@ router.patch('/atividades/:atividadeId/concluir', async (req, res, next) => {
     if (!mongoose.isValidObjectId(atividadeId)) return erro400(res, 'O identificador da atividade é inválido.');
     if (!corpoVazio(req.body)) return erro400(res, 'A conclusão não aceita campos enviados pelo cliente.');
 
-    const progresso = await ProgressoAtividade.findOne({ aluno: req.usuario.id, atividade: atividadeId });
+    const atividade = await buscarAtividadePublicada(atividadeId);
+    if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
+
+    const alunoId = req.usuario.id;
+    const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
+    if (!liberado) {
+      return res.status(403).json({
+        sucesso: false,
+        mensagem: 'Acesso negado. A atividade anterior precisa estar concluída para finalizar esta missão.'
+      });
+    }
+
+    const progresso = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
     if (!progresso) return res.status(404).json({ sucesso: false, mensagem: 'O aluno ainda não iniciou esta atividade.' });
+    
     if (progresso.status !== 'concluida') {
       progresso.status = 'concluida';
       progresso.concluidaEm = new Date();
