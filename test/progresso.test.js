@@ -3,6 +3,7 @@ import { after, afterEach, before, beforeEach, test } from 'node:test';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import app from '../src/app.js';
+import Aluno from '../src/models/Aluno.js';
 import Atividade from '../src/models/Atividade.js';
 import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
 
@@ -15,6 +16,8 @@ const questaoBId = '507f1f77bcf86cd799439405';
 const alternativaAId = '507f1f77bcf86cd799439406';
 const alternativaBId = '507f1f77bcf86cd799439407';
 const alternativaCId = '507f1f77bcf86cd799439408';
+const turmaAId = '507f1f77bcf86cd799439409';
+const turmaBId = '507f1f77bcf86cd799439410';
 const originais = new Map();
 let atividades;
 let progressos;
@@ -36,13 +39,25 @@ function instalarMocks() {
   atividades = new Map([[atividadeId, {
     _id: atividadeId,
     status: 'publicada',
+    turma: turmaAId,
     questoes: [
       { _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] },
       { _id: questaoBId, alternativas: [{ _id: alternativaCId }, { _id: alternativaBId }] }
     ]
   }]]);
   progressos = new Map();
+  substituir(Aluno, 'findById', id => ({ select: async () =>
+    [alunoAId, alunoBId].includes(String(id))
+      ? { _id: id, turma: String(id) === alunoAId ? turmaAId : turmaBId }
+      : null
+  }));
   substituir(Atividade, 'findById', async id => atividades.get(String(id)) ?? null);
+  substituir(Atividade, 'find', filtro => ({
+    select: async () => [...atividades.values()].filter(atividade =>
+      (filtro._id.$in ?? []).some(id => String(id) === String(atividade._id)) &&
+      String(atividade.turma) === String(filtro.turma)
+    ).map(atividade => ({ _id: atividade._id }))
+  }));
   substituir(ProgressoAtividade, 'findOne', async filtro => progressos.get(chave(filtro.aluno, filtro.atividade)) ?? null);
   substituir(ProgressoAtividade, 'find', async filtro => [...progressos.values()].filter(item => String(item.aluno) === String(filtro.aluno)));
   const saveKey = `${ProgressoAtividade.modelName}#prototype.save`;
@@ -85,7 +100,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chaveMetodo, original] of originais) {
     const [nomeModelo, caminhoMetodo] = chaveMetodo.split('#');
-    const modelo = { Atividade, ProgressoAtividade }[nomeModelo];
+    const modelo = { Aluno, Atividade, ProgressoAtividade }[nomeModelo];
     if (caminhoMetodo === 'prototype.save') modelo.prototype.save = original;
     else modelo[caminhoMetodo] = original;
   }
@@ -158,9 +173,9 @@ test('consultas e alterações são isoladas pela identidade do aluno no token',
   assert.equal((await request('/progresso', { accessToken: tokenB })).status, 200);
   const listaB = await (await request('/progresso', { accessToken: tokenB })).json();
   assert.deepEqual(listaB.progresso, []);
-  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenB })).status, 404);
-  assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, tokenB)).status, 404);
-  assert.equal((await concluir(atividadeId, tokenB)).status, 404);
+  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenB })).status, 403);
+  assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, tokenB)).status, 403);
+  assert.equal((await concluir(atividadeId, tokenB)).status, 403);
   assert.equal(progressos.size, 1);
   assert.equal(progressos.get(chave(alunoAId, atividadeId)).status, 'iniciada');
 });
@@ -229,4 +244,54 @@ test('schema define unicidade aluno/atividade e valida status e respostas', asyn
   });
   await assert.rejects(invalido.validate(), erro => erro.name === 'ValidationError');
   assert.equal(mongoose.isValidObjectId(atividadeId), true);
+});
+
+test('aluno de outra turma não inicia nem consulta atividade publicada', async () => {
+  const tokenOutraTurma = token('aluno', alunoBId);
+  assert.equal((await iniciar(atividadeId, tokenOutraTurma)).status, 403);
+  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenOutraTurma })).status, 403);
+  assert.equal(progressos.size, 0);
+});
+
+test('GET /progresso exige aluno existente e omite progresso inconsistente de outra turma', async () => {
+  await iniciar();
+  const atividadeOutraTurmaId = '507f1f77bcf86cd799439412';
+  atividades.set(atividadeOutraTurmaId, {
+    _id: atividadeOutraTurmaId, status: 'publicada', turma: turmaBId, questoes: []
+  });
+  const progressoValido = progressos.get(chave(alunoAId, atividadeId));
+  progressos.set(chave(alunoAId, atividadeOutraTurmaId), {
+    aluno: alunoAId, atividade: atividadeOutraTurmaId, status: 'concluida', respostas: []
+  });
+  progressos.set(chave(alunoAId, '507f1f77bcf86cd799439413'), {
+    aluno: alunoAId, atividade: '507f1f77bcf86cd799439413', status: 'iniciada', respostas: []
+  });
+
+  const resposta = await request('/progresso', { accessToken: token() });
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(corpo.progresso.map(item => String(item.atividade)), [atividadeId]);
+  assert.equal(String(corpo.progresso[0]._id), String(progressoValido._id));
+  assert.equal((await request('/progresso', { accessToken: token('aluno', '507f1f77bcf86cd799439414') })).status, 404);
+});
+
+test('respostas e conclusão bloqueiam vínculos de outra turma ou atividade', async () => {
+  await iniciar();
+  const atividadeOutraTurmaId = '507f1f77bcf86cd799439411';
+  atividades.set(atividadeOutraTurmaId, {
+    _id: atividadeOutraTurmaId,
+    status: 'publicada',
+    turma: turmaBId,
+    questoes: [{ _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] }]
+  });
+  const tokenOutraTurma = token('aluno', alunoBId);
+  const resposta = [{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }];
+
+  assert.equal((await enviarRespostas(resposta, atividadeId, tokenOutraTurma)).status, 403);
+  assert.equal((await concluir(atividadeId, tokenOutraTurma)).status, 403);
+  assert.equal((await iniciar(atividadeOutraTurmaId)).status, 403);
+  assert.equal((await enviarRespostas(resposta, atividadeOutraTurmaId)).status, 403);
+  assert.equal((await concluir(atividadeOutraTurmaId)).status, 403);
+  assert.equal(progressos.size, 1);
+  assert.equal(progressos.get(chave(alunoAId, atividadeId)).respostas.length, 0);
 });

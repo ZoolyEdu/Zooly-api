@@ -6,6 +6,7 @@ import app from '../src/app.js';
 import Atividade from '../src/models/Atividade.js';
 import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
 import Historia from '../src/models/Historia.js';
+import Professor from '../src/models/Professor.js';
 import Turma from '../src/models/Turma.js';
 
 const segredoTeste = 'segredo-local-atividades-sem-dados-reais';
@@ -53,19 +54,32 @@ function instalarMocks() {
       arquivada: false
     }],
     ['507f1f77bcf86cd799439322', {
-      _id: '507f1f77bcf86cd799439322', professorResponsavel: professorId, arquivada: true
+      _id: '507f1f77bcf86cd799439322', escola: escolaId, professorResponsavel: professorId, arquivada: true
     }]
   ]);
   historias = new Map([[historiaId, { _id: historiaId, titulo: 'História oficial', conteudo: 'Conteúdo oficial.' }]]);
   atividades = new Map();
   chamadas = {
     turma: [], historia: [], atividade: [], criacao: 0,
-    filtroLista: null, ordenacao: null, exclusao: 0
+    filtroLista: null, projecaoLista: null, ordenacao: null, filtroTurmas: null,
+    projecaoTurmas: null, exclusao: 0
   };
 
   substituir(Turma, 'findById', async id => {
     chamadas.turma.push(String(id));
     return turmas.get(String(id)) ?? null;
+  });
+  substituir(Professor, 'findById', id => ({
+    select: async () => String(id) === professorId ? { _id: professorId, escolas: [escolaId] } : { _id: id, escolas: [] }
+  }));
+  substituir(Turma, 'find', filtro => {
+    chamadas.filtroTurmas = filtro;
+    return { select: async projecao => {
+      chamadas.projecaoTurmas = projecao;
+      // Intencionalmente devolve todas as turmas: a rota deve rejeitar as arquivadas
+      // e as escolas externas mesmo se o resultado do modelo for excessivamente amplo.
+      return [...turmas.values()].map(turma => ({ _id: turma._id, escola: turma.escola, arquivada: turma.arquivada }));
+    } };
   });
   substituir(Historia, 'findById', async id => {
     chamadas.historia.push(String(id));
@@ -80,10 +94,16 @@ function instalarMocks() {
   substituir(Atividade, 'find', filtro => {
     chamadas.filtroLista = filtro;
     return {
+      select: function (projecao) {
+        chamadas.projecaoLista = projecao;
+        return this;
+      },
       sort: async ordenacao => {
         chamadas.ordenacao = ordenacao;
         return [...atividades.values()]
-          .filter(atividade => atividade.status === filtro.status)
+          .filter(atividade => atividade.status === filtro.status &&
+            (filtro.turma.$in ?? []).some(turma => String(turma) === String(atividade.turma)))
+          .map(atividade => JSON.parse(JSON.stringify(atividade)))
           .sort((a, b) => {
             const porData = new Date(a.publicadoEm) - new Date(b.publicadoEm);
             return porData || String(a._id).localeCompare(String(b._id));
@@ -248,7 +268,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chave, metodoOriginal] of originais) {
     const [nomeModelo, nomeMetodo] = chave.split('#');
-    const modelo = { Turma, Historia, Atividade, ProgressoAtividade }[nomeModelo];
+    const modelo = { Professor, Turma, Historia, Atividade, ProgressoAtividade }[nomeModelo];
     const [alvo, nome] = nomeMetodo.includes('.') ? nomeMetodo.split('.') : ['static', nomeMetodo];
     const objeto = alvo === 'prototype' ? modelo.prototype : modelo;
     objeto[nome] = metodoOriginal;
@@ -733,10 +753,11 @@ test('prazo é opcional, aceita data válida e rejeita valor inválido', async (
 test('atividades publicadas são ordenadas por publicação e desempate estável, mesmo após o prazo', async () => {
   const dataAntiga = new Date('2026-08-01T00:00:00.000Z');
   const dataEmpate = new Date('2026-09-01T00:00:00.000Z');
-  const adicionar = (id, status, publicadoEm, prazo = null) => {
+  const adicionar = (id, status, publicadoEm, prazo = null, turma = turmaId) => {
     const atividade = new Atividade({
       ...atividadeBody(),
       _id: id,
+      turma,
       status,
       publicadoEm,
       prazo
@@ -750,6 +771,7 @@ test('atividades publicadas são ordenadas por publicação e desempate estável
   adicionar('507f1f77bcf86cd799439324', 'rascunho', null);
   adicionar(idPrimeiraEmpatada, 'publicada', dataEmpate);
   adicionar('507f1f77bcf86cd799439325', 'publicada', dataAntiga);
+  adicionar('507f1f77bcf86cd799439326', 'publicada', dataEmpate, null, '507f1f77bcf86cd799439322');
 
   const resposta = await listarPublicadas(emitirToken());
   const corpo = await resposta.json();
@@ -758,8 +780,39 @@ test('atividades publicadas são ordenadas por publicação e desempate estável
   assert.deepEqual(corpo.atividades.map(atividade => String(atividade._id)), [
     '507f1f77bcf86cd799439325', idPrimeiraEmpatada, idSegundaEmpatada, '507f1f77bcf86cd799439323'
   ]);
-  assert.deepEqual(chamadas.filtroLista, { status: 'publicada' });
+  assert.deepEqual(chamadas.filtroLista, { status: 'publicada', turma: { $in: [turmaId, '507f1f77bcf86cd799439321'] } });
+  assert.deepEqual(chamadas.projecaoLista, { 'questoes.respostasCorretas': 0 });
+  assert.deepEqual(chamadas.filtroTurmas, { escola: { $in: [escolaId] }, arquivada: false });
+  assert.equal(chamadas.projecaoTurmas, '_id escola arquivada');
   assert.deepEqual(chamadas.ordenacao, { publicadoEm: 1, _id: 1 });
+  assert.ok(corpo.atividades.every(atividade => atividade.questoes.every(questao => !Object.hasOwn(questao, 'respostasCorretas'))));
+  assert.equal(JSON.stringify(corpo).includes('respostasCorretas'), false);
+  assert.ok(atividades.get('507f1f77bcf86cd799439323').questoes.every(questao => questao.respostasCorretas.length > 0));
+});
+
+test('Mongoose recebe projeção de exclusão para respostas corretas em questões aninhadas', () => {
+  const consulta = new mongoose.Query({}, {}, Atividade).select({ 'questoes.respostasCorretas': 0 });
+  assert.deepEqual(consulta.projection(), { 'questoes.respostasCorretas': 0 });
+});
+
+test('listagem de publicadas não revela escolas fora do vínculo do professor', async () => {
+  const turmaEscolaExternaId = '507f1f77bcf86cd799439360';
+  const escolaExternaId = '507f1f77bcf86cd799439361';
+  turmas.set(turmaEscolaExternaId, { _id: turmaEscolaExternaId, escola: escolaExternaId, arquivada: false });
+  registrarAtividade('publicada');
+  const atividadeExternaId = '507f1f77bcf86cd799439362';
+  atividades.set(atividadeExternaId, new Atividade({
+    ...atividadeBody(), _id: atividadeExternaId, turma: turmaEscolaExternaId,
+    status: 'publicada', publicadoEm: new Date()
+  }).toObject());
+
+  const resposta = await listarPublicadas(emitirToken('professor', professorAlternativoId));
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(corpo.atividades, []);
+  assert.deepEqual(chamadas.filtroTurmas, { escola: { $in: [] }, arquivada: false });
+  assert.equal(chamadas.filtroLista, null);
 });
 
 test('criador exclui atividade sem registros relacionados', async () => {

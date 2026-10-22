@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import Aluno from '../models/Aluno.js';
 import Atividade from '../models/Atividade.js';
 import ProgressoAtividade from '../models/ProgressoAtividade.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
@@ -23,6 +24,19 @@ function corpoVazio(body) {
 async function buscarAtividadePublicada(id) {
   const atividade = await Atividade.findById(id);
   return atividade?.status === 'publicada' ? atividade : null;
+}
+
+async function validarAcessoAlunoAtividade(alunoId, atividade, res) {
+  const aluno = await Aluno.findById(alunoId).select('turma');
+  if (!aluno) {
+    res.status(404).json({ sucesso: false, mensagem: 'Aluno não encontrado.' });
+    return false;
+  }
+  if (String(aluno.turma) !== String(atividade.turma)) {
+    res.status(403).json({ sucesso: false, mensagem: 'O aluno não tem acesso a esta atividade.' });
+    return false;
+  }
+  return true;
 }
 
 function validarRespostas(body, atividade) {
@@ -63,6 +77,7 @@ router.post('/atividades/:atividadeId/iniciar', async (req, res, next) => {
 
     const atividade = await buscarAtividadePublicada(atividadeId);
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
+    if (!await validarAcessoAlunoAtividade(req.usuario.id, atividade, res)) return;
 
     const aluno = req.usuario.id;
     const existente = await ProgressoAtividade.findOne({ aluno, atividade: atividadeId });
@@ -91,6 +106,7 @@ router.put('/atividades/:atividadeId/respostas', async (req, res, next) => {
 
     const atividade = await buscarAtividadePublicada(atividadeId);
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
+    if (!await validarAcessoAlunoAtividade(req.usuario.id, atividade, res)) return;
     if (!validarRespostas(req.body, atividade)) return erro400(res, 'As respostas são inválidas.');
 
     const progresso = await ProgressoAtividade.findOne({ aluno: req.usuario.id, atividade: atividadeId });
@@ -114,6 +130,10 @@ router.patch('/atividades/:atividadeId/concluir', async (req, res, next) => {
     if (!mongoose.isValidObjectId(atividadeId)) return erro400(res, 'O identificador da atividade é inválido.');
     if (!corpoVazio(req.body)) return erro400(res, 'A conclusão não aceita campos enviados pelo cliente.');
 
+    const atividade = await buscarAtividadePublicada(atividadeId);
+    if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
+    if (!await validarAcessoAlunoAtividade(req.usuario.id, atividade, res)) return;
+
     const progresso = await ProgressoAtividade.findOne({ aluno: req.usuario.id, atividade: atividadeId });
     if (!progresso) return res.status(404).json({ sucesso: false, mensagem: 'O aluno ainda não iniciou esta atividade.' });
     if (progresso.status !== 'concluida') {
@@ -129,7 +149,21 @@ router.patch('/atividades/:atividadeId/concluir', async (req, res, next) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    const progresso = await ProgressoAtividade.find({ aluno: req.usuario.id });
+    const aluno = await Aluno.findById(req.usuario.id).select('turma');
+    if (!aluno) return res.status(404).json({ sucesso: false, mensagem: 'Aluno não encontrado.' });
+
+    const progressoDoAluno = await ProgressoAtividade.find({ aluno: req.usuario.id });
+    const atividadesIds = [...new Set(progressoDoAluno.map(item => String(item.atividade)))];
+    if (atividadesIds.length === 0) {
+      return res.status(200).json({ sucesso: true, progresso: [] });
+    }
+
+    const atividadesDaTurma = await Atividade.find({
+      _id: { $in: atividadesIds },
+      turma: aluno.turma
+    }).select('_id');
+    const idsPermitidos = new Set(atividadesDaTurma.map(atividade => String(atividade._id)));
+    const progresso = progressoDoAluno.filter(item => idsPermitidos.has(String(item.atividade)));
     return res.status(200).json({ sucesso: true, progresso });
   } catch (error) {
     return next(error);
@@ -140,6 +174,9 @@ router.get('/atividades/:atividadeId', async (req, res, next) => {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId)) return erro400(res, 'O identificador da atividade é inválido.');
+    const atividade = await buscarAtividadePublicada(atividadeId);
+    if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
+    if (!await validarAcessoAlunoAtividade(req.usuario.id, atividade, res)) return;
     const progresso = await ProgressoAtividade.findOne({ aluno: req.usuario.id, atividade: atividadeId });
     if (!progresso) return res.status(404).json({ sucesso: false, mensagem: 'Progresso não encontrado.' });
     return res.status(200).json({ sucesso: true, progresso });
