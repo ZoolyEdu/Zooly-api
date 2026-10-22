@@ -53,6 +53,12 @@ As variáveis de ambiente e os comandos definitivos serão documentados conforme
 
 Em desenvolvimento. As funcionalidades serão implementadas progressivamente e documentadas conforme forem concluídas.
 
+## Relatório semanal de desempenho
+
+Professores autorizados podem consultar `GET /api/desempenho/turmas/:turmaId/semanal?data=AAAA-MM-DD`. A data seleciona a semana de segunda-feira a segunda-feira (fim exclusivo), considerando o fuso `America/Sao_Paulo`; `periodo.inicio` e `periodo.fim` são instantes UTC. `periodo.disponivel` fica `true` quando o período já terminou.
+
+O relatório inclui todos os alunos da turma, inclusive os sem registros, e consolida inícios por `iniciadaEm`, conclusões por `concluidaEm` e respostas pela data da última submissão (`respostasRegistradasEm`). Progresso legado com respostas mas sem essa data aparece em `respostasSemData` e não é atribuído a nenhuma semana. O percentual de acerto é `null` quando não há respostas datadas no período.
+
 ## Equipe
 
 Projeto acadêmico do curso de Desenvolvimento de Software Multiplataforma (DSM), da FATEC Registro.

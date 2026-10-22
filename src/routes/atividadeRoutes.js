@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import Atividade from '../models/Atividade.js';
 import Historia from '../models/Historia.js';
+import Professor from '../models/Professor.js';
 import Turma from '../models/Turma.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
@@ -21,6 +22,17 @@ function temCampoDesconhecido(objeto, camposPermitidos) {
 
 function rejeitarRequisicao(res, mensagem) {
   return res.status(400).json({ sucesso: false, mensagem });
+}
+
+function removerRespostasCorretas(valor) {
+  if (Array.isArray(valor)) return valor.map(removerRespostasCorretas);
+  if (!valor || typeof valor !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(valor))) {
+    return valor;
+  }
+
+  return Object.fromEntries(Object.entries(valor)
+    .filter(([campo]) => campo !== 'respostasCorretas')
+    .map(([campo, conteudo]) => [campo, removerRespostasCorretas(conteudo)]));
 }
 
 function prazoDeEntradaValido(prazo) {
@@ -227,9 +239,30 @@ router.post('/', async (req, res, next) => {
 
 router.get('/publicadas', async (req, res, next) => {
   try {
-    const atividades = await Atividade.find({ status: 'publicada' })
+    const professor = await Professor.findById(req.usuario.id).select('escolas');
+    if (!professor) {
+      return res.status(404).json({ sucesso: false, mensagem: 'Professor não encontrado.' });
+    }
+
+    const escolas = (professor.escolas ?? []).map(escola => escola?._id ?? escola);
+    const turmas = await Turma.find({ escola: { $in: escolas }, arquivada: false }).select('_id escola arquivada');
+    const escolasPermitidas = new Set(escolas.map(String));
+    const turmaIds = turmas
+      .filter(turma => !turma.arquivada && escolasPermitidas.has(String(turma.escola)))
+      .map(turma => turma._id);
+    if (turmaIds.length === 0) {
+      return res.status(200).json({ sucesso: true, atividades: [] });
+    }
+
+    const atividades = await Atividade.find({ status: 'publicada', turma: { $in: turmaIds } })
+      .select({ 'questoes.respostasCorretas': 0 })
       .sort({ publicadoEm: 1, _id: 1 });
-    return res.status(200).json({ sucesso: true, atividades });
+    return res.status(200).json({
+      sucesso: true,
+      atividades: atividades.map(atividade => removerRespostasCorretas(
+        typeof atividade.toObject === 'function' ? atividade.toObject() : atividade
+      ))
+    });
   } catch (error) {
     return next(error);
   }

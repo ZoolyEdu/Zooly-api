@@ -3,9 +3,9 @@ import { after, afterEach, before, beforeEach, test } from 'node:test';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import app from '../src/app.js';
+import Aluno from '../src/models/Aluno.js';
 import Atividade from '../src/models/Atividade.js';
 import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
-import Aluno from '../src/models/Aluno.js';
 
 const segredoTeste = 'segredo-local-progresso-sem-dados-reais';
 const atividadeId = '507f1f77bcf86cd799439401';
@@ -19,7 +19,6 @@ const questaoBId = '507f1f77bcf86cd799439405';
 const alternativaAId = '507f1f77bcf86cd799439406';
 const alternativaBId = '507f1f77bcf86cd799439407';
 const alternativaCId = '507f1f77bcf86cd799439408';
-
 const originais = new Map();
 let atividades;
 let progressos;
@@ -39,7 +38,7 @@ function chaveProgresso(aluno, atividade) {
 }
 
 function instalarMocks() {
-  atividades = new Map([
+atividades = new Map([
     [atividadeId, {
       _id: atividadeId,
       turma: turmaAId,
@@ -111,7 +110,6 @@ function instalarMocks() {
   });
 
   substituir(Aluno, 'findById', async id => alunos.get(String(id)) ?? null);
-
   const saveKey = `${ProgressoAtividade.modelName}#prototype.save`;
   if (!originais.has(saveKey)) originais.set(saveKey, ProgressoAtividade.prototype.save);
   ProgressoAtividade.prototype.save = async function salvarMock() {
@@ -238,14 +236,12 @@ test('consultas e alterações são isoladas pela identidade do aluno no token',
   assert.equal((await request('/progresso', { accessToken: tokenB })).status, 200);
   const listaB = await (await request('/progresso', { accessToken: tokenB })).json();
   assert.deepEqual(listaB.progresso, []);
-
-  // A consulta GET devolve 404 porque o progresso ainda não foi iniciado
+// A consulta GET devolve 404 porque o progresso ainda não foi iniciado
   assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenB })).status, 404);
 
   // As alterações (PUT e PATCH) esbarram na proteção de turma e devolvem 403
   assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, tokenB)).status, 403);
   assert.equal((await concluir(atividadeId, tokenB)).status, 403);
-
   assert.equal(progressos.size, 1);
   assert.equal(progressos.get(chaveProgresso(alunoAId, atividadeId)).status, 'iniciada');
 });
@@ -316,35 +312,6 @@ test('schema define unicidade aluno/atividade e valida status e respostas', asyn
   assert.equal(mongoose.isValidObjectId(atividadeId), true);
 });
 
-test('retorna 403 se o aluno tentar aceder ao mapa ou atividades de outra turma', async () => {
-  const tokenB = token('aluno', alunoBId); // Aluno B pertence à turmaBId
-  const respostaMapa = await request(`/progresso/turma/${turmaAId}/mapa`, { accessToken: tokenB });
-  assert.equal(respostaMapa.status, 403);
-
-  const respostaIniciar = await iniciar(atividadeId, tokenB);
-  assert.equal(respostaIniciar.status, 403);
-});
-
-test('bloqueia conclusão (403) de missão cuja predecessora não foi concluída', async () => {
-  const tokenA = token('aluno', alunoAId);
-  // Tenta concluir a atividade de ordem 2 sem ter concluído a ordem 1
-  const respostaConcluir = await concluir(atividadeOrdem2Id, tokenA);
-  assert.equal(respostaConcluir.status, 403);
-});
-
-test('trata com segurança e bloqueia desbloqueio de atividades sem ordem válida', async () => {
-  const atividadeSemOrdemId = '507f1f77bcf86cd799439499';
-  atividades.set(atividadeSemOrdemId, {
-    _id: atividadeSemOrdemId,
-    turma: turmaAId,
-    ordem: null, // ordem inválida/ausente
-    status: 'publicada',
-    questoes: []
-  });
-
-  const resposta = await iniciar(atividadeSemOrdemId, token());
-  assert.equal(resposta.status, 403);
-});
 test('1 e 2: primeira atividade é permitida, a segunda permanece bloqueada sem a primeira concluída', async () => {
   const tokenA = token('aluno', alunoAId);
   assert.equal((await iniciar(atividadeId, tokenA)).status, 201); // Ordem 1

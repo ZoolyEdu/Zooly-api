@@ -37,9 +37,8 @@ async function validarVinculoAlunoTurma(alunoId, turmaIdAtividade) {
 async function validarDesbloqueioSequencial(alunoId, atividadeAtual) {
   const ordemAtual = Number(atividadeAtual.ordem);
   if (!Number.isInteger(ordemAtual) || ordemAtual < 1) {
-    return false; // Bloqueia atividades com ordens inválidas ou corrompidas
+    return false;
   }
-
   if (ordemAtual === 1) return true;
 
   const atividadeAnterior = await Atividade.findOne({
@@ -48,7 +47,6 @@ async function validarDesbloqueioSequencial(alunoId, atividadeAtual) {
     status: 'publicada'
   });
 
-  // Se a atividade anterior não existir, bloqueia para evitar lacunas na sequência
   if (!atividadeAnterior) return false;
 
   const progressoAnterior = await ProgressoAtividade.findOne({
@@ -64,7 +62,6 @@ function validarRespostas(body, atividade) {
   if (!ehObjeto(body) || Object.keys(body).some(campo => campo !== 'respostas') || !Array.isArray(body.respostas)) {
     return false;
   }
-
   const questoes = new Map(atividade.questoes.map(questao => [String(questao._id), questao]));
   const respondidas = new Set();
   for (const resposta of body.respostas) {
@@ -97,25 +94,18 @@ router.get('/turma/:turmaId/mapa', async (req, res, next) => {
     if (!mongoose.isValidObjectId(turmaId)) return erro400(res, 'O identificador da turma é inválido.');
 
     const alunoId = req.usuario.id;
-
-    // Valida se o aluno pertence à turma solicitada
     const pertenceTurma = await validarVinculoAlunoTurma(alunoId, turmaId);
     if (!pertenceTurma) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. O aluno não pertence a esta turma.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. O aluno não pertence a esta turma.' });
     }
 
     const atividades = await Atividade.find({ turma: turmaId, status: 'publicada' }).sort({ ordem: 1, _id: 1 });
     const progressos = await ProgressoAtividade.find({ aluno: alunoId });
-
     const agora = new Date();
 
     const mapaMissoes = atividades.map((atividade, index) => {
       const progresso = progressos.find(p => String(p.atividade) === String(atividade._id));
       const concluida = progresso?.status === 'concluida';
-
       let desbloqueada = false;
       const ordemAtual = Number(atividade.ordem);
 
@@ -159,22 +149,14 @@ router.post('/atividades/:atividadeId/iniciar', async (req, res, next) => {
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
 
     const alunoId = req.usuario.id;
-
-    // Valida vínculo do aluno com a turma da atividade
     const pertenceTurma = await validarVinculoAlunoTurma(alunoId, atividade.turma);
     if (!pertenceTurma) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.' });
     }
 
     const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
     if (!liberado) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. Você precisa concluir a missão anterior para desbloquear esta atividade.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. Você precisa concluir a missão anterior para desbloquear esta atividade.' });
     }
 
     const existente = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
@@ -207,21 +189,14 @@ router.put('/atividades/:atividadeId/respostas', async (req, res, next) => {
     if (!validarRespostas(req.body, atividade)) return erro400(res, 'As respostas são inválidas.');
 
     const alunoId = req.usuario.id;
-
     const pertenceTurma = await validarVinculoAlunoTurma(alunoId, atividade.turma);
     if (!pertenceTurma) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.' });
     }
 
     const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
     if (!liberado) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. A atividade anterior precisa estar concluída.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. A atividade anterior precisa estar concluída.' });
     }
 
     const progresso = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
@@ -253,21 +228,14 @@ router.patch('/atividades/:atividadeId/concluir', async (req, res, next) => {
     if (!atividade) return res.status(404).json({ sucesso: false, mensagem: 'Atividade publicada não encontrada.' });
 
     const alunoId = req.usuario.id;
-
     const pertenceTurma = await validarVinculoAlunoTurma(alunoId, atividade.turma);
     if (!pertenceTurma) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. O aluno não pertence à turma desta atividade.' });
     }
 
     const liberado = await validarDesbloqueioSequencial(alunoId, atividade);
     if (!liberado) {
-      return res.status(403).json({
-        sucesso: false,
-        mensagem: 'Acesso negado. A atividade anterior precisa estar concluída para finalizar esta missão.'
-      });
+      return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. A atividade anterior precisa estar concluída para finalizar esta missão.' });
     }
 
     const progresso = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
