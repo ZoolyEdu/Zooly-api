@@ -5,6 +5,7 @@ import ProgressoAtividade from '../models/ProgressoAtividade.js';
 import Aluno from '../models/Aluno.js';
 import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
+import { concluirAtividadeComRecompensa } from '../services/moedaService.js';
 
 const router = Router();
 router.use(autenticarToken, autorizarPerfil('aluno'));
@@ -233,15 +234,8 @@ router.patch('/atividades/:atividadeId/concluir', async (req, res, next) => {
       return res.status(403).json({ sucesso: false, mensagem: 'Acesso negado. A atividade anterior precisa estar concluída para finalizar esta missão.' });
     }
 
-    const progresso = await ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
-    if (!progresso) return res.status(404).json({ sucesso: false, mensagem: 'O aluno ainda não iniciou esta atividade.' });
-
-    if (progresso.status !== 'concluida') {
-      progresso.status = 'concluida';
-      progresso.concluidaEm = new Date();
-      await progresso.save();
-    }
-    return res.status(200).json({ sucesso: true, progresso });
+    const resultado = await concluirAtividadeComRecompensa({ alunoId, atividadeId });
+    return res.status(200).json({ sucesso: true, ...resultado });
   } catch (error) {
     return next(error);
   }

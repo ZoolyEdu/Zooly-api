@@ -8,6 +8,7 @@ import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
 import Historia from '../src/models/Historia.js';
 import Professor from '../src/models/Professor.js';
 import Turma from '../src/models/Turma.js';
+import MovimentacaoMoeda from '../src/models/MovimentacaoMoeda.js';
 
 const segredoTeste = 'segredo-local-atividades-sem-dados-reais';
 const professorId = '507f1f77bcf86cd799439310';
@@ -91,6 +92,7 @@ function instalarMocks() {
     return encontrada ? new Atividade(encontrada) : null;
   });
   substituir(ProgressoAtividade, 'exists', async () => null);
+  substituir(MovimentacaoMoeda, 'exists', async () => null);
   substituir(Atividade, 'exists', async filtro => {
     const encontrada = [...atividades.values()].find(atividade =>
       String(atividade.turma) === String(filtro.turma) && Number(atividade.ordem) === Number(filtro.ordem)
@@ -280,7 +282,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chave, metodoOriginal] of originais) {
     const [nomeModelo, nomeMetodo] = chave.split('#');
-    const modelo = { Professor, Turma, Historia, Atividade, ProgressoAtividade }[nomeModelo];
+    const modelo = { Professor, Turma, Historia, Atividade, ProgressoAtividade, MovimentacaoMoeda }[nomeModelo];
     const [alvo, nome] = nomeMetodo.includes('.') ? nomeMetodo.split('.') : ['static', nomeMetodo];
     const objeto = alvo === 'prototype' ? modelo.prototype : modelo;
     objeto[nome] = metodoOriginal;
@@ -895,6 +897,21 @@ test('criador exclui atividade sem registros relacionados', async () => {
   assert.equal(resposta.status, 200);
   assert.equal(atividades.has(atividadeId), false);
   assert.equal(chamadas.exclusao, 1);
+});
+
+test('atividade com recompensa registrada não pode ser excluída', async () => {
+  registrarAtividade();
+  const existsOriginal = MovimentacaoMoeda.exists;
+  MovimentacaoMoeda.exists = async filtro => String(filtro.atividade) === atividadeId ? { _id: 'movimentacao' } : null;
+
+  try {
+    const resposta = await remover(atividadeId, emitirToken());
+    assert.equal(resposta.status, 409);
+    assert.equal(atividades.has(atividadeId), true);
+    assert.equal(chamadas.exclusao, 0);
+  } finally {
+    MovimentacaoMoeda.exists = existsOriginal;
+  }
 });
 
 test('exclusão rejeita ID inválido e atividade inexistente', async () => {

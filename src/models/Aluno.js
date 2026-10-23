@@ -27,6 +27,12 @@ const alunoSchema = new mongoose.Schema(
     cadastroInicialConcluido: {
       type: Boolean,
       default: false
+    },
+    // Escrita de serialização para operações de moedas; não armazena saldo.
+    versaoMovimentacoesMoeda: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   { timestamps: true }
