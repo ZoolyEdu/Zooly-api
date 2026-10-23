@@ -13,6 +13,7 @@ import progressoRoutes from './routes/progressoRoutes.js';
 import desempenhoRoutes from './routes/desempenhoRoutes.js';
 import moedaRoutes from './routes/moedaRoutes.js';
 import lojaRoutes from './routes/lojaRoutes.js';
+import bnccRoutes from './routes/bnccRoutes.js';
 
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/api/progresso', progressoRoutes);
 app.use('/api/desempenho', desempenhoRoutes);
 app.use('/api/moedas', moedaRoutes);
 app.use('/api/loja', lojaRoutes);
+app.use('/api/bncc', bnccRoutes);
 
 // Rota não encontrada (404)
 app.use((req, res) => {
