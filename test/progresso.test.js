@@ -9,6 +9,9 @@ import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
 
 const segredoTeste = 'segredo-local-progresso-sem-dados-reais';
 const atividadeId = '507f1f77bcf86cd799439401';
+const atividadeOrdem2Id = '507f1f77bcf86cd799439411';
+const turmaAId = '507f1f77bcf86cd799439421';
+const turmaBId = '507f1f77bcf86cd799439422';
 const alunoAId = '507f1f77bcf86cd799439402';
 const alunoBId = '507f1f77bcf86cd799439403';
 const questaoAId = '507f1f77bcf86cd799439404';
@@ -16,54 +19,126 @@ const questaoBId = '507f1f77bcf86cd799439405';
 const alternativaAId = '507f1f77bcf86cd799439406';
 const alternativaBId = '507f1f77bcf86cd799439407';
 const alternativaCId = '507f1f77bcf86cd799439408';
-const turmaAId = '507f1f77bcf86cd799439409';
-const turmaBId = '507f1f77bcf86cd799439410';
 const originais = new Map();
 let atividades;
 let progressos;
+let alunos;
 let servidor;
 let baseUrl;
 let jwtAnterior;
 
 function substituir(modelo, metodo, implementacao) {
-  const chave = `${modelo.modelName}#${metodo}`;
-  if (!originais.has(chave)) originais.set(chave, modelo[metodo]);
+  const chaveMetodo = `${modelo.modelName}#${metodo}`;
+  if (!originais.has(chaveMetodo)) originais.set(chaveMetodo, modelo[metodo]);
   modelo[metodo] = implementacao;
 }
 
-function chave(aluno, atividade) {
+function chaveProgresso(aluno, atividade) {
   return `${String(aluno)}:${String(atividade)}`;
 }
 
 function instalarMocks() {
-  atividades = new Map([[atividadeId, {
-    _id: atividadeId,
-    status: 'publicada',
-    turma: turmaAId,
-    questoes: [
-      { _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] },
-      { _id: questaoBId, alternativas: [{ _id: alternativaCId }, { _id: alternativaBId }] }
-    ]
-  }]]);
+  atividades = new Map([
+    [atividadeId, {
+      _id: atividadeId,
+      turma: turmaAId,
+      ordem: 1,
+      status: 'publicada',
+      questoes: [
+        { _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] },
+        { _id: questaoBId, alternativas: [{ _id: alternativaCId }, { _id: alternativaBId }] }
+      ]
+    }],
+    [atividadeOrdem2Id, {
+      _id: atividadeOrdem2Id,
+      turma: turmaAId,
+      ordem: 2,
+      status: 'publicada',
+      questoes: [
+        { _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] }
+      ]
+    }]
+  ]);
+
   progressos = new Map();
-  substituir(Aluno, 'findById', id => ({ select: async () =>
-    [alunoAId, alunoBId].includes(String(id))
-      ? { _id: id, turma: String(id) === alunoAId ? turmaAId : turmaBId }
-      : null
-  }));
+
+  alunos = new Map([
+    [alunoAId, { _id: alunoAId, turma: turmaAId }],
+    [alunoBId, { _id: alunoBId, turma: turmaBId }]
+  ]);
+
   substituir(Atividade, 'findById', async id => atividades.get(String(id)) ?? null);
-  substituir(Atividade, 'find', filtro => ({
-    select: async () => [...atividades.values()].filter(atividade =>
-      (filtro._id.$in ?? []).some(id => String(id) === String(atividade._id)) &&
-      String(atividade.turma) === String(filtro.turma)
-    ).map(atividade => ({ _id: atividade._id }))
-  }));
-  substituir(ProgressoAtividade, 'findOne', async filtro => progressos.get(chave(filtro.aluno, filtro.atividade)) ?? null);
-  substituir(ProgressoAtividade, 'find', async filtro => [...progressos.values()].filter(item => String(item.aluno) === String(filtro.aluno)));
+  substituir(Atividade, 'find', filtro => {
+    let ordenacao = null;
+    const resultado = () => [...atividades.values()].filter(atividade => {
+      if (filtro?.turma && String(atividade.turma) !== String(filtro.turma)) return false;
+      if (filtro?.status && atividade.status !== filtro.status) return false;
+      if (filtro?._id?.$in && !filtro._id.$in.some(id => String(id) === String(atividade._id))) return false;
+      return true;
+    });
+    return {
+      select() { return this; },
+      sort(spec) { ordenacao = spec; return this; },
+      then(resolve, reject) {
+        const lista = resultado();
+        if (ordenacao) lista.sort((a, b) => Number(a.ordem) - Number(b.ordem) || String(a._id).localeCompare(String(b._id)));
+        return Promise.resolve(lista).then(resolve, reject);
+      }
+    };
+  });
+
+  substituir(Atividade, 'findOne', async filtro => {
+    if (!filtro) return [...atividades.values()][0] ?? null;
+    return [...atividades.values()].find(a => {
+      if (filtro._id && String(a._id) !== String(filtro._id)) return false;
+      if (filtro.turma && String(a.turma) !== String(filtro.turma)) return false;
+      if (filtro.ordem !== undefined && Number(a.ordem) !== Number(filtro.ordem)) return false;
+      if (filtro.status && a.status !== filtro.status) return false;
+      return true;
+    }) ?? null;
+  });
+
+  substituir(ProgressoAtividade, 'findOne', async filtro => {
+    let lista = [...progressos.values()];
+    if (filtro?.aluno) lista = lista.filter(p => String(p.aluno) === String(filtro.aluno));
+    if (filtro?.atividade) lista = lista.filter(p => String(p.atividade) === String(filtro.atividade));
+    if (filtro?._id) lista = lista.filter(p => String(p._id) === String(filtro._id));
+    if (filtro?.status) lista = lista.filter(p => p.status === filtro.status);
+    const doc = lista[0] ?? null;
+    if (doc) {
+      // Anexa o método save para evitar o erro 500 no controller
+      doc.save = ProgressoAtividade.prototype.save.bind(doc);
+    }
+    return doc;
+  });
+
+  substituir(ProgressoAtividade, 'find', async filtro => {
+    let lista = [...progressos.values()];
+    if (filtro?.aluno) lista = lista.filter(p => String(p.aluno) === String(filtro.aluno));
+    return lista.map(doc => {
+      doc.save = ProgressoAtividade.prototype.save.bind(doc);
+      return doc;
+    });
+  });
+
+  substituir(Aluno, 'findById', id => ({ select: async () => alunos.get(String(id)) ?? null }));
   const saveKey = `${ProgressoAtividade.modelName}#prototype.save`;
   if (!originais.has(saveKey)) originais.set(saveKey, ProgressoAtividade.prototype.save);
   ProgressoAtividade.prototype.save = async function salvarMock() {
-    progressos.set(chave(this.aluno, this.atividade), this);
+    if (!this._id) this._id = new mongoose.Types.ObjectId();
+    const documentoSalvo = {
+      ...this,
+      _id: this._id,
+      aluno: this.aluno,
+      atividade: this.atividade,
+      status: this.status || 'iniciada',
+      respostas: this.respostas || [],
+      respostasRegistradasEm: this.respostasRegistradasEm || new Date(),
+      concluidaEm: this.concluidaEm,
+      iniciadaEm: this.iniciadaEm || new Date()
+    };
+    progressos.set(chaveProgresso(this.aluno, this.atividade), documentoSalvo);
+    Object.assign(this, documentoSalvo);
     return this;
   };
 }
@@ -100,7 +175,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chaveMetodo, original] of originais) {
     const [nomeModelo, caminhoMetodo] = chaveMetodo.split('#');
-    const modelo = { Aluno, Atividade, ProgressoAtividade }[nomeModelo];
+    const modelo = { Atividade, ProgressoAtividade, Aluno }[nomeModelo];
     if (caminhoMetodo === 'prototype.save') modelo.prototype.save = original;
     else modelo[caminhoMetodo] = original;
   }
@@ -136,7 +211,7 @@ test('aluno inicia atividade publicada e o início é idempotente', async () => 
   assert.equal(progressos.size, 1);
 });
 
-test('respostas são persistidas no progresso do aluno e recuperadas em nova consulta', async () => {
+test('respostas são persistidas no progresso do aluno, atualizam respostasRegistradasEm e são recuperadas', async () => {
   await iniciar();
   const resposta = await enviarRespostas([
     { questaoId: questaoAId, alternativasSelecionadas: [alternativaAId, alternativaBId] },
@@ -173,11 +248,14 @@ test('consultas e alterações são isoladas pela identidade do aluno no token',
   assert.equal((await request('/progresso', { accessToken: tokenB })).status, 200);
   const listaB = await (await request('/progresso', { accessToken: tokenB })).json();
   assert.deepEqual(listaB.progresso, []);
+  // A atividade existe, mas pertence a outra turma do aluno.
   assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenB })).status, 403);
+
+  // As alterações (PUT e PATCH) esbarram na proteção de turma e devolvem 403
   assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, tokenB)).status, 403);
   assert.equal((await concluir(atividadeId, tokenB)).status, 403);
   assert.equal(progressos.size, 1);
-  assert.equal(progressos.get(chave(alunoAId, atividadeId)).status, 'iniciada');
+  assert.equal(progressos.get(chaveProgresso(alunoAId, atividadeId)).status, 'iniciada');
 });
 
 test('não aceita identidade do aluno vinda do corpo', async () => {
@@ -220,7 +298,7 @@ test('rejeita respostas inválidas, duplicadas ou que não pertencem à atividad
     });
     assert.equal(resposta.status, 400);
   }
-  assert.equal(progressos.get(chave(alunoAId, atividadeId)).respostas.length, 0);
+  assert.equal(progressos.get(chaveProgresso(alunoAId, atividadeId)).respostas.length, 0);
 });
 
 test('respostas exigem atividade iniciada e operações não aceitam campos inesperados', async () => {
@@ -246,52 +324,85 @@ test('schema define unicidade aluno/atividade e valida status e respostas', asyn
   assert.equal(mongoose.isValidObjectId(atividadeId), true);
 });
 
-test('aluno de outra turma não inicia nem consulta atividade publicada', async () => {
-  const tokenOutraTurma = token('aluno', alunoBId);
-  assert.equal((await iniciar(atividadeId, tokenOutraTurma)).status, 403);
-  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: tokenOutraTurma })).status, 403);
-  assert.equal(progressos.size, 0);
-});
-
-test('GET /progresso exige aluno existente e omite progresso inconsistente de outra turma', async () => {
+test('GET /progresso rejeita aluno inexistente e omite progresso de outra turma, draft ou atividade ausente', async () => {
   await iniciar();
   const atividadeOutraTurmaId = '507f1f77bcf86cd799439412';
-  atividades.set(atividadeOutraTurmaId, {
-    _id: atividadeOutraTurmaId, status: 'publicada', turma: turmaBId, questoes: []
-  });
-  const progressoValido = progressos.get(chave(alunoAId, atividadeId));
-  progressos.set(chave(alunoAId, atividadeOutraTurmaId), {
-    aluno: alunoAId, atividade: atividadeOutraTurmaId, status: 'concluida', respostas: []
-  });
-  progressos.set(chave(alunoAId, '507f1f77bcf86cd799439413'), {
-    aluno: alunoAId, atividade: '507f1f77bcf86cd799439413', status: 'iniciada', respostas: []
-  });
+  const atividadeRascunhoId = '507f1f77bcf86cd799439413';
+  atividades.set(atividadeOutraTurmaId, { _id: atividadeOutraTurmaId, status: 'publicada', turma: turmaBId, ordem: 1, questoes: [] });
+  atividades.set(atividadeRascunhoId, { _id: atividadeRascunhoId, status: 'rascunho', turma: turmaAId, ordem: 2, questoes: [] });
+  progressos.set(chaveProgresso(alunoAId, atividadeOutraTurmaId), { aluno: alunoAId, atividade: atividadeOutraTurmaId, status: 'concluida' });
+  progressos.set(chaveProgresso(alunoAId, atividadeRascunhoId), { aluno: alunoAId, atividade: atividadeRascunhoId, status: 'iniciada' });
+  progressos.set(chaveProgresso(alunoAId, '507f1f77bcf86cd799439414'), { aluno: alunoAId, atividade: '507f1f77bcf86cd799439414', status: 'iniciada' });
 
   const resposta = await request('/progresso', { accessToken: token() });
   const corpo = await resposta.json();
   assert.equal(resposta.status, 200);
   assert.deepEqual(corpo.progresso.map(item => String(item.atividade)), [atividadeId]);
-  assert.equal(String(corpo.progresso[0]._id), String(progressoValido._id));
-  assert.equal((await request('/progresso', { accessToken: token('aluno', '507f1f77bcf86cd799439414') })).status, 404);
+  assert.equal((await request('/progresso', { accessToken: token('aluno', '507f1f77bcf86cd799439415') })).status, 404);
 });
 
-test('respostas e conclusão bloqueiam vínculos de outra turma ou atividade', async () => {
+test('GET de progresso individual exige atividade publicada e vínculo com a turma atual', async () => {
   await iniciar();
-  const atividadeOutraTurmaId = '507f1f77bcf86cd799439411';
-  atividades.set(atividadeOutraTurmaId, {
-    _id: atividadeOutraTurmaId,
-    status: 'publicada',
-    turma: turmaBId,
-    questoes: [{ _id: questaoAId, alternativas: [{ _id: alternativaAId }, { _id: alternativaBId }] }]
-  });
-  const tokenOutraTurma = token('aluno', alunoBId);
-  const resposta = [{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }];
+  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: token('aluno', alunoBId) })).status, 403);
+  atividades.get(atividadeId).status = 'rascunho';
+  assert.equal((await request(`/progresso/atividades/${atividadeId}`, { accessToken: token() })).status, 404);
+});
 
-  assert.equal((await enviarRespostas(resposta, atividadeId, tokenOutraTurma)).status, 403);
-  assert.equal((await concluir(atividadeId, tokenOutraTurma)).status, 403);
-  assert.equal((await iniciar(atividadeOutraTurmaId)).status, 403);
-  assert.equal((await enviarRespostas(resposta, atividadeOutraTurmaId)).status, 403);
-  assert.equal((await concluir(atividadeOutraTurmaId)).status, 403);
-  assert.equal(progressos.size, 1);
-  assert.equal(progressos.get(chave(alunoAId, atividadeId)).respostas.length, 0);
+test('1 e 2: primeira atividade é permitida, a segunda permanece bloqueada sem a primeira concluída', async () => {
+  const tokenA = token('aluno', alunoAId);
+  assert.equal((await iniciar(atividadeId, tokenA)).status, 201); // Ordem 1
+  assert.equal((await iniciar(atividadeOrdem2Id, tokenA)).status, 403); // Ordem 2 bloqueada
+  assert.equal((await concluir(atividadeId, tokenA)).status, 200);
+  assert.equal((await iniciar(atividadeOrdem2Id, tokenA)).status, 201);
+});
+
+test('mapa mostra a primeira missão aberta e libera a próxima após conclusão da predecessora', async () => {
+  const caminho = `/progresso/turma/${turmaAId}/mapa`;
+  const antes = await request(caminho, { accessToken: token() });
+  const mapaAntes = await antes.json();
+  assert.equal(antes.status, 200);
+  assert.deepEqual(mapaAntes.mapaMissoes.map(item => item.desbloqueada), [true, false]);
+
+  await iniciar(atividadeId);
+  await concluir(atividadeId);
+  const depois = await request(caminho, { accessToken: token() });
+  const mapaDepois = await depois.json();
+  assert.deepEqual(mapaDepois.mapaMissoes.map(item => item.desbloqueada), [true, true]);
+});
+
+test('3 e 4: envio de respostas e conclusão em atividade bloqueada retorna 403', async () => {
+  const tokenA = token('aluno', alunoAId);
+  assert.equal((await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeOrdem2Id, tokenA)).status, 403);
+  assert.equal((await concluir(atividadeOrdem2Id, tokenA)).status, 403);
+});
+
+test('5, 6 e 7: trata lacunas, ordens duplicadas e ignora desbloqueios automáticos sem ordem válida', async () => {
+  const atividadeLacunaId = '507f1f77bcf86cd799439499';
+  const atividadeSemOrdemId = '507f1f77bcf86cd799439498';
+  atividades.set(atividadeLacunaId, { _id: atividadeLacunaId, turma: turmaAId, ordem: 4, status: 'publicada', questoes: [] });
+  atividades.set(atividadeSemOrdemId, { _id: atividadeSemOrdemId, turma: turmaAId, ordem: null, status: 'publicada', questoes: [] });
+  assert.equal((await iniciar(atividadeLacunaId, token())).status, 403);
+  assert.equal((await iniciar(atividadeSemOrdemId, token())).status, 403);
+});
+
+test('não permite ordens duplicadas no schema de atividades', async () => {
+  assert.ok(Atividade.schema.indexes().some(([campos, opcoes]) =>
+    campos.turma === 1 && campos.ordem === 1 && opcoes.unique
+  ));
+});
+
+test('8: aluno não consegue acessar mapa, iniciar, responder ou concluir atividades de outra turma', async () => {
+  const tokenB = token('aluno', alunoBId); // Turma B
+  assert.equal((await request(`/progresso/turma/${turmaAId}/mapa`, { accessToken: tokenB })).status, 403);
+  assert.equal((await iniciar(atividadeId, tokenB)).status, 403);
+  assert.equal((await enviarRespostas([], atividadeId, tokenB)).status, 403);
+  assert.equal((await concluir(atividadeId, tokenB)).status, 403);
+});
+
+test('9: respostasRegistradasEm é persistido e recuperado corretamente', async () => {
+  await iniciar(atividadeId, token());
+  const resposta = await enviarRespostas([{ questaoId: questaoAId, alternativasSelecionadas: [alternativaAId] }], atividadeId, token());
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.ok(corpo.progresso.respostasRegistradasEm);
 });

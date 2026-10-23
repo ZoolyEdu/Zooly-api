@@ -8,7 +8,7 @@ import autenticarToken from '../middlewares/autenticarToken.js';
 import autorizarPerfil from '../middlewares/autorizarPerfil.js';
 
 const router = Router();
-const camposAtividadeEntrada = ['turma', 'titulo', 'historia', 'questoes', 'prazo'];
+const camposAtividadeEntrada = ['turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo'];
 
 router.use(autenticarToken, autorizarPerfil('professor'));
 
@@ -22,6 +22,19 @@ function temCampoDesconhecido(objeto, camposPermitidos) {
 
 function rejeitarRequisicao(res, mensagem) {
   return res.status(400).json({ sucesso: false, mensagem });
+}
+
+function rejeitarOrdemOcupada(res) {
+  return res.status(409).json({ sucesso: false, mensagem: 'A ordem informada já está ocupada nesta turma.' });
+}
+
+async function proximaOrdemDisponivel(turmaId) {
+  const atividades = await Atividade.find({ turma: turmaId }).select('ordem');
+  const maiorOrdem = atividades.reduce((maior, atividade) => {
+    const ordem = Number(atividade.ordem);
+    return Number.isInteger(ordem) && ordem > maior ? ordem : maior;
+  }, 0);
+  return maiorOrdem + 1;
 }
 
 function removerRespostasCorretas(valor) {
@@ -85,9 +98,10 @@ function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {})
 
 function validarCorpoEdicao(body) {
   return ehObjeto(body) &&
-    !temCampoDesconhecido(body, ['titulo', 'historia', 'questoes', 'prazo']) &&
+    !temCampoDesconhecido(body, ['titulo', 'ordem', 'historia', 'questoes', 'prazo']) &&
     typeof body.titulo === 'string' &&
     Boolean(body.titulo.trim()) &&
+    (body.ordem === undefined || (typeof body.ordem === 'number' && Number.isInteger(body.ordem) && body.ordem >= 1)) &&
     prazoDeEntradaValido(body.prazo) &&
     Object.hasOwn(body, 'historia') &&
     Object.hasOwn(body, 'questoes') &&
@@ -186,6 +200,7 @@ router.post('/', async (req, res, next) => {
       !mongoose.isValidObjectId(body.turma) ||
       typeof body.titulo !== 'string' ||
       !body.titulo.trim() ||
+      (body.ordem !== undefined && (typeof body.ordem !== 'number' || !Number.isInteger(body.ordem) || body.ordem < 1)) ||
       !prazoDeEntradaValido(body.prazo) ||
       !validarCamposAninhados(body)
     ) {
@@ -200,6 +215,7 @@ router.post('/', async (req, res, next) => {
       turma: body.turma,
       professorCriador: req.usuario.id,
       titulo: body.titulo,
+      ordem: body.ordem !== undefined ? body.ordem : 1,
       historia: body.historia,
       questoes: body.questoes,
       status: 'rascunho',
@@ -222,7 +238,25 @@ router.post('/', async (req, res, next) => {
 
     if (!await validarHistoriaOficial(body.historia, res)) return;
 
-    await atividade.save();
+    const ordemManual = body.ordem !== undefined;
+    if (ordemManual && await Atividade.exists({ turma: body.turma, ordem: body.ordem })) {
+      return rejeitarOrdemOcupada(res);
+    }
+
+    const maxTentativas = ordemManual ? 1 : 5;
+    for (let tentativa = 0; tentativa < maxTentativas; tentativa += 1) {
+      atividade.ordem = ordemManual ? body.ordem : await proximaOrdemDisponivel(body.turma);
+      try {
+        await atividade.save();
+        break;
+      } catch (error) {
+        if (error.code !== 11000) throw error;
+        if (ordemManual) return rejeitarOrdemOcupada(res);
+        if (tentativa === maxTentativas - 1) {
+          return res.status(409).json({ sucesso: false, mensagem: 'Não foi possível reservar uma ordem para a atividade. Tente novamente.' });
+        }
+      }
+    }
 
     return res.status(201).json({
       sucesso: true,
@@ -375,8 +409,10 @@ router.put('/:id', async (req, res, next) => {
       return rejeitarRequisicao(res, 'Os IDs enviados devem pertencer aos subdocumentos correspondentes desta atividade.');
     }
 
-    // Substitui o conjunto editável; turma, autor e status permanecem intactos.
     atividade.titulo = body.titulo;
+    if (body.ordem !== undefined) {
+      atividade.ordem = body.ordem;
+    }
     atividade.historia = body.historia;
     atividade.prazo = body.prazo ?? null;
     atividade.questoes = body.questoes.map(questao => ({ ...questao, respostasCorretas: [] }));
@@ -393,7 +429,12 @@ router.put('/:id', async (req, res, next) => {
 
     if (!await validarHistoriaOficial(body.historia, res)) return;
 
-    await atividade.save();
+    try {
+      await atividade.save();
+    } catch (error) {
+      if (error.code === 11000 && body.ordem !== undefined) return rejeitarOrdemOcupada(res);
+      throw error;
+    }
     return res.status(200).json({
       sucesso: true,
       mensagem: 'Atividade atualizada com sucesso.',
