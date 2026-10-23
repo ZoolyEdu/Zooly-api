@@ -11,6 +11,7 @@ import historiaRoutes from './routes/historiaRoutes.js';
 import atividadeRoutes from './routes/atividadeRoutes.js';
 import progressoRoutes from './routes/progressoRoutes.js';
 import desempenhoRoutes from './routes/desempenhoRoutes.js';
+import moedaRoutes from './routes/moedaRoutes.js';
 
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/historias', historiaRoutes);
 app.use('/api/atividades', atividadeRoutes);
 app.use('/api/progresso', progressoRoutes);
 app.use('/api/desempenho', desempenhoRoutes);
+app.use('/api/moedas', moedaRoutes);
 
 // Rota não encontrada (404)
 app.use((req, res) => {
@@ -77,7 +79,7 @@ app.use((err, req, res, next) => {
   // Erros de cliente explicitamente identificados
   const status = err.status || err.statusCode;
 
-  if (status >= 400 && status < 500) {
+  if ((status >= 400 && status < 500) || status === 503) {
     return res.status(status).json({
       sucesso: false,
       mensagem: err.message || 'Não foi possível processar a solicitação.'

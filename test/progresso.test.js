@@ -6,6 +6,7 @@ import app from '../src/app.js';
 import Aluno from '../src/models/Aluno.js';
 import Atividade from '../src/models/Atividade.js';
 import ProgressoAtividade from '../src/models/ProgressoAtividade.js';
+import MovimentacaoMoeda from '../src/models/MovimentacaoMoeda.js';
 
 const segredoTeste = 'segredo-local-progresso-sem-dados-reais';
 const atividadeId = '507f1f77bcf86cd799439401';
@@ -23,12 +24,14 @@ const originais = new Map();
 let atividades;
 let progressos;
 let alunos;
+let movimentacoes;
+let filaTransacaoMoedas;
 let servidor;
 let baseUrl;
 let jwtAnterior;
 
 function substituir(modelo, metodo, implementacao) {
-  const chaveMetodo = `${modelo.modelName}#${metodo}`;
+  const chaveMetodo = `${modelo.modelName ?? (modelo === mongoose ? 'mongoose' : 'model')}#${metodo}`;
   if (!originais.has(chaveMetodo)) originais.set(chaveMetodo, modelo[metodo]);
   modelo[metodo] = implementacao;
 }
@@ -38,6 +41,8 @@ function chaveProgresso(aluno, atividade) {
 }
 
 function instalarMocks() {
+  movimentacoes = [];
+  filaTransacaoMoedas = Promise.resolve();
   atividades = new Map([
     [atividadeId, {
       _id: atividadeId,
@@ -122,6 +127,27 @@ function instalarMocks() {
   });
 
   substituir(Aluno, 'findById', id => ({ select: async () => alunos.get(String(id)) ?? null }));
+  substituir(Aluno, 'updateOne', async filtro => ({ matchedCount: alunos.has(String(filtro._id)) ? 1 : 0 }));
+  substituir(MovimentacaoMoeda, 'create', async documentos => {
+    const criados = documentos.map(documento => ({ ...documento, _id: new mongoose.Types.ObjectId(), createdAt: new Date() }));
+    movimentacoes.push(...criados);
+    return criados;
+  });
+  substituir(MovimentacaoMoeda, 'aggregate', () => {
+    const saldo = movimentacoes.reduce((total, item) => total + (item.tipo === 'ganho' ? item.quantidade : -item.quantidade), 0);
+    return { session() { return this; }, then(resolve, reject) { return Promise.resolve(saldo ? [{ saldo }] : []).then(resolve, reject); } };
+  });
+  substituir(mongoose, 'startSession', async () => ({
+    async withTransaction(operacao) {
+      const anterior = filaTransacaoMoedas;
+      let liberar;
+      filaTransacaoMoedas = new Promise(resolve => { liberar = resolve; });
+      await anterior;
+      try { return await operacao(); }
+      finally { liberar(); }
+    },
+    async endSession() {}
+  }));
   const saveKey = `${ProgressoAtividade.modelName}#prototype.save`;
   if (!originais.has(saveKey)) originais.set(saveKey, ProgressoAtividade.prototype.save);
   ProgressoAtividade.prototype.save = async function salvarMock() {
@@ -175,7 +201,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chaveMetodo, original] of originais) {
     const [nomeModelo, caminhoMetodo] = chaveMetodo.split('#');
-    const modelo = { Atividade, ProgressoAtividade, Aluno }[nomeModelo];
+    const modelo = { Atividade, ProgressoAtividade, Aluno, MovimentacaoMoeda, mongoose }[nomeModelo];
     if (caminhoMetodo === 'prototype.save') modelo.prototype.save = original;
     else modelo[caminhoMetodo] = original;
   }
@@ -240,6 +266,20 @@ test('conclusão registra o estado e horário sem criar progresso duplicado', as
   assert.ok(corpo.progresso.concluidaEm);
   assert.equal(progressos.size, 1);
   assert.equal((await concluir()).status, 200);
+  assert.equal(movimentacoes.filter(item => item.tipo === 'ganho').length, 1);
+  assert.equal(movimentacoes[0].quantidade, 10);
+  atividades.get(atividadeId).titulo = 'Título editado depois da recompensa';
+  assert.equal((await concluir()).status, 200);
+  assert.equal(movimentacoes[0].quantidade, 10);
+  assert.equal(movimentacoes.filter(item => item.tipo === 'ganho').length, 1);
+});
+
+test('conclusões repetidas e simultâneas concedem somente uma recompensa', async () => {
+  await iniciar();
+  const respostas = await Promise.all([concluir(), concluir()]);
+  assert.deepEqual(respostas.map(resposta => resposta.status), [200, 200]);
+  assert.equal(progressos.size, 1);
+  assert.equal(movimentacoes.filter(item => item.tipo === 'ganho' && String(item.atividade) === atividadeId).length, 1);
 });
 
 test('consultas e alterações são isoladas pela identidade do aluno no token', async () => {
@@ -307,6 +347,7 @@ test('respostas exigem atividade iniciada e operações não aceitam campos ines
   assert.equal((await iniciar(atividadeId, token(), { status: 'concluida' })).status, 400);
   await iniciar();
   assert.equal((await concluir(atividadeId, token(), { aluno: alunoBId })).status, 400);
+  assert.equal((await concluir(atividadeId, token(), { recompensa: 100, quantidade: 100 })).status, 400);
 });
 
 test('schema define unicidade aluno/atividade e valida status e respostas', async () => {
