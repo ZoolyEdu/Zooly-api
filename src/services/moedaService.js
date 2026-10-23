@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Aluno from '../models/Aluno.js';
 import MovimentacaoMoeda from '../models/MovimentacaoMoeda.js';
 import ProgressoAtividade from '../models/ProgressoAtividade.js';
+import AvatarAluno from '../models/AvatarAluno.js';
 
 function erroMoedas(mensagem, status) {
   const erro = new Error(mensagem);
@@ -100,6 +101,29 @@ export async function gastarMoedas({ alunoId, quantidade, motivo }) {
       motivo: motivo.trim()
     }], { session: sessao });
     return { movimentacao, saldo: saldoAtual - quantidade };
+  });
+}
+
+export async function comprarAvatar({ alunoId, avatarId, preco }) {
+  if (typeof avatarId !== 'string' || !avatarId.trim()) throw erroMoedas('Avatar inválido.', 400);
+  if (!Number.isSafeInteger(preco) || preco < 1) throw erroMoedas('Preço do avatar inválido.', 400);
+
+  return comTransacaoDeAluno(alunoId, async sessao => {
+    let consulta = AvatarAluno.exists({ aluno: alunoId, avatarId });
+    if (typeof consulta.session === 'function') consulta = consulta.session(sessao);
+    if (await consulta) throw erroMoedas('Este avatar já foi adquirido.', 409);
+
+    const saldoAtual = await calcularSaldoComSessao(alunoId, sessao);
+    if (saldoAtual < preco) throw erroMoedas('Saldo insuficiente.', 409);
+
+    const [movimentacao] = await MovimentacaoMoeda.create([{
+      aluno: alunoId,
+      tipo: 'gasto',
+      quantidade: preco,
+      motivo: `Compra de avatar: ${avatarId}`
+    }], { session: sessao });
+    const [aquisicao] = await AvatarAluno.create([{ aluno: alunoId, avatarId }], { session: sessao });
+    return { movimentacao, aquisicao, saldo: saldoAtual - preco };
   });
 }
 

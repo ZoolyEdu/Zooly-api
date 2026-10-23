@@ -28,6 +28,11 @@ const alunoSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    avatarSelecionado: {
+      type: String,
+      default: null,
+      trim: true
+    },
     // Escrita de serialização para operações de moedas; não armazena saldo.
     versaoMovimentacoesMoeda: {
       type: Number,
