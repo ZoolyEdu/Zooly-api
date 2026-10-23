@@ -91,8 +91,21 @@ function instalarMocks() {
     return encontrada ? new Atividade(encontrada) : null;
   });
   substituir(ProgressoAtividade, 'exists', async () => null);
+  substituir(Atividade, 'exists', async filtro => {
+    const encontrada = [...atividades.values()].find(atividade =>
+      String(atividade.turma) === String(filtro.turma) && Number(atividade.ordem) === Number(filtro.ordem)
+    );
+    return encontrada ? { _id: encontrada._id } : null;
+  });
   substituir(Atividade, 'find', filtro => {
     chamadas.filtroLista = filtro;
+    const resultados = () => [...atividades.values()].filter(atividade => {
+      if (filtro.status && atividade.status !== filtro.status) return false;
+      if (filtro.turma && !Array.isArray(filtro.turma.$in) && String(filtro.turma) !== String(atividade.turma)) return false;
+      if (filtro.turma?.$in && !filtro.turma.$in.some(turma => String(turma) === String(atividade.turma))) return false;
+      if (filtro._id?.$in && !filtro._id.$in.some(id => String(id) === String(atividade._id))) return false;
+      return true;
+    });
     return {
       select: function (projecao) {
         chamadas.projecaoLista = projecao;
@@ -100,15 +113,14 @@ function instalarMocks() {
       },
       sort: async ordenacao => {
         chamadas.ordenacao = ordenacao;
-        return [...atividades.values()]
-          .filter(atividade => atividade.status === filtro.status &&
-            (filtro.turma.$in ?? []).some(turma => String(turma) === String(atividade.turma)))
+        return resultados()
           .map(atividade => JSON.parse(JSON.stringify(atividade)))
           .sort((a, b) => {
             const porData = new Date(a.publicadoEm) - new Date(b.publicadoEm);
             return porData || String(a._id).localeCompare(String(b._id));
           });
-      }
+      },
+      then: (resolve, reject) => Promise.resolve(resultados()).then(resolve, reject)
     };
   });
   substituir(Atividade, 'prototype.save', async function salvarMock() {
@@ -370,6 +382,14 @@ test('rejeita status enviado pelo cliente e campos protegidos ou inesperados', a
     assert.equal(resposta.status, 400);
   }
 
+  assert.equal(chamadas.criacao, 0);
+});
+
+test('rejeita ordem manual ausente de inteiro positivo', async () => {
+  for (const ordem of [0, -1, 1.5, '2', null]) {
+    const resposta = await post(atividadeBody({ ordem }), emitirToken());
+    assert.equal(resposta.status, 400, `ordem inválida: ${String(ordem)}`);
+  }
   assert.equal(chamadas.criacao, 0);
 });
 
@@ -793,6 +813,58 @@ test('atividades publicadas são ordenadas por publicação e desempate estável
 test('Mongoose recebe projeção de exclusão para respostas corretas em questões aninhadas', () => {
   const consulta = new mongoose.Query({}, {}, Atividade).select({ 'questoes.respostasCorretas': 0 });
   assert.deepEqual(consulta.projection(), { 'questoes.respostasCorretas': 0 });
+});
+
+test('ordem omitida recebe automaticamente o próximo número disponível na turma', async () => {
+  atividades.set('507f1f77bcf86cd799439370', {
+    _id: '507f1f77bcf86cd799439370', turma: turmaId, ordem: 1, status: 'rascunho'
+  });
+
+  const resposta = await post(atividadeBody(), emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 201);
+  assert.equal(corpo.atividade.ordem, 2);
+});
+
+test('ordem manual ocupada retorna conflito claro e não persiste outra atividade', async () => {
+  atividades.set('507f1f77bcf86cd799439371', {
+    _id: '507f1f77bcf86cd799439371', turma: turmaId, ordem: 4, status: 'publicada'
+  });
+
+  const resposta = await post(atividadeBody({ ordem: 4 }), emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 409);
+  assert.match(corpo.mensagem, /ordem informada já está ocupada/i);
+  assert.equal(chamadas.criacao, 0);
+});
+
+test('ordem automática refaz a reserva após colisão concorrente no índice único', async () => {
+  atividades.set('507f1f77bcf86cd799439372', {
+    _id: '507f1f77bcf86cd799439372', turma: turmaId, ordem: 1, status: 'rascunho'
+  });
+  const salvarOriginal = Atividade.prototype.save;
+  let primeiraTentativa = true;
+  Atividade.prototype.save = async function salvarComConcorrencia() {
+    if (primeiraTentativa) {
+      primeiraTentativa = false;
+      atividades.set('507f1f77bcf86cd799439373', {
+        _id: '507f1f77bcf86cd799439373', turma: turmaId, ordem: 2, status: 'rascunho'
+      });
+      const erro = new Error('duplicate key');
+      erro.code = 11000;
+      throw erro;
+    }
+    return salvarOriginal.call(this);
+  };
+
+  const resposta = await post(atividadeBody(), emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 201);
+  assert.equal(corpo.atividade.ordem, 3);
+  assert.equal(chamadas.criacao, 1);
 });
 
 test('listagem de publicadas não revela escolas fora do vínculo do professor', async () => {
