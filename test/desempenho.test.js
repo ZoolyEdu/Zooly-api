@@ -16,6 +16,7 @@ const turmaB = '507f1f77bcf86cd799439103';
 const alunoA = '507f1f77bcf86cd799439104';
 const alunoB = '507f1f77bcf86cd799439105';
 const atividadeId = '507f1f77bcf86cd799439106';
+const atividadeBId = '507f1f77bcf86cd799439112';
 const q1 = '507f1f77bcf86cd799439107';
 const q2 = '507f1f77bcf86cd799439108';
 const alt1 = '507f1f77bcf86cd799439109';
@@ -184,6 +185,68 @@ test('exporta PDF semanal válido com cabeçalhos, turma, período e indicadores
   assert.match(conteudoPdf, /Período: 19\/10\/2026 00:00 até 26\/10\/2026 00:00 \(America\/Sao_Paulo; fim exclusivo\)/);
   assert.match(conteudoPdf, /Concluídas/);
   assert.match(conteudoPdf, /Ana/);
+  assert.match(conteudoPdf, /Atividades iniciadas: 1/);
+  assert.match(conteudoPdf, /Atividades concluídas: 0/);
+  assert.match(conteudoPdf, /Respostas registradas: 2/);
+  assert.match(conteudoPdf, /Acertos: 1/);
+  assert.match(conteudoPdf, /Erros: 1/);
+  assert.match(conteudoPdf, /Percentual de acerto: 50%/);
+});
+
+test('PDF semanal de uma turma exclui dados de outra turma e consulta cada conjunto com filtros corretos', async () => {
+  const escolaB = '507f1f77bcf86cd799439121';
+  const alunaTurmaA = { _id: alunoA, ra: 'RA-A', nomeCompleto: 'Ana Somente Turma A', turma: turmaA };
+  const alunaTurmaB = { _id: alunoB, ra: 'RA-B', nomeCompleto: 'Bruna Somente Turma B', turma: turmaB };
+  const atividadeA = { _id: atividadeId, titulo: 'Atividade A', questoes: [
+    { _id: q1, enunciado: 'Q1', respostasCorretas: [alt1] },
+    { _id: q2, enunciado: 'Q2', respostasCorretas: [alt1, alt2] }
+  ] };
+  const atividadeB = { _id: atividadeBId, titulo: 'Atividade B', questoes: [
+    { _id: atividadeBId, enunciado: 'Questao exclusiva B', respostasCorretas: [alt3] }
+  ] };
+  const progressoB = [{
+    atividade: atividadeBId,
+    status: 'concluida',
+    iniciadaEm: new Date('2026-10-20T12:00:00.000Z'),
+    concluidaEm: new Date('2026-10-21T12:00:00.000Z'),
+    respostasRegistradasEm: new Date('2026-10-21T12:00:00.000Z'),
+    respostas: [{ questaoId: atividadeBId, alternativasSelecionadas: [alt3] }]
+  }];
+  const filtros = { alunos: [], atividades: [], progressos: [] };
+  escolasPermitidas = ['507f1f77bcf86cd799439120', escolaB];
+
+  substituir(Aluno, 'find', filtro => {
+    filtros.alunos.push(filtro);
+    return consulta(String(filtro.turma) === turmaA ? [alunaTurmaA] : String(filtro.turma) === turmaB ? [alunaTurmaB] : []);
+  });
+  substituir(Atividade, 'find', async filtro => {
+    filtros.atividades.push(filtro);
+    if (String(filtro.turma) === turmaA) return [atividadeA];
+    if (String(filtro.turma) === turmaB) return [atividadeB];
+    return [];
+  });
+  substituir(ProgressoAtividade, 'find', async filtro => {
+    filtros.progressos.push(filtro);
+    return String(filtro.aluno) === alunoA ? progressoA : String(filtro.aluno) === alunoB ? progressoB : [];
+  });
+
+  const response = await get(`/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-10-21`, token());
+  assert.equal(response.status, 200);
+  const pdf = Buffer.from(await response.arrayBuffer());
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  const texto = extrairTextoPdf(pdf);
+  assert.match(texto, /Turma: A/);
+  assert.match(texto, /Período: 19\/10\/2026 00:00 até 26\/10\/2026 00:00/);
+  assert.match(texto, /Ana Somente Turma A/);
+  assert.doesNotMatch(texto, /Bruna Somente Turma B|Atividade B|Questao exclusiva B/);
+  assert.match(texto, /Respostas registradas: 2/);
+  assert.match(texto, /Acertos: 1/);
+  assert.match(texto, /Erros: 1/);
+  assert.match(texto, /Percentual de acerto: 50%/);
+
+  assert.deepEqual(filtros.alunos, [{ turma: turmaA }]);
+  assert.deepEqual(filtros.atividades, [{ turma: turmaA, status: 'publicada' }]);
+  assert.deepEqual(filtros.progressos, [{ aluno: alunoA, atividade: { $in: [atividadeId] } }]);
 });
 
 test('PDF semanal aplica validação de data, existência, autenticação e autorização da turma', async () => {
