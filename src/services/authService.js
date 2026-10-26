@@ -103,4 +103,73 @@ async function loginAluno(ra, senha) {
   return { aluno, turma, token };
 }
 
-export default { loginProfessor, loginAdmin, loginAluno };
+async function entrarTurma(ra, codigoPermanente, senha) {
+  if (!process.env.JWT_SECRET) {
+    return { erro: 'jwt-nao-configurado' };
+  }
+
+  const turma = await Turma.findOne({
+    codigoPermanente: codigoPermanente.trim().toUpperCase()
+  }).select('+senhaAcessoHash');
+
+  if (
+    !turma ||
+    turma.arquivada ||
+    !turma.senhaAcessoHash ||
+    !(await bcrypt.compare(senha, turma.senhaAcessoHash))
+  ) {
+    return { erro: 'credenciais-invalidas' };
+  }
+
+  let aluno = await Aluno.findOne({
+    ra: ra.trim()
+  });
+
+  if (aluno && aluno.turma.toString() !== turma._id.toString()) {
+    return { erro: 'ra-associado-outra-turma' };
+  }
+
+  let alunoNovo = false;
+
+  if (!aluno) {
+    try {
+      aluno = await Aluno.create({
+        ra: ra.trim(),
+        turma: turma._id
+      });
+
+      alunoNovo = true;
+    } catch (errorCriacao) {
+      if (errorCriacao.code !== 11000) {
+        throw errorCriacao;
+      }
+
+      aluno = await Aluno.findOne({
+        ra: ra.trim()
+      });
+
+      if (
+        !aluno ||
+        aluno.turma.toString() !== turma._id.toString()
+      ) {
+        return { erro: 'conflito-cadastro-aluno' };
+      }
+    }
+  }
+
+  const token = jwt.sign(
+    {
+      tipo: 'aluno',
+      nome: aluno.nomeCompleto || 'Aluno'
+    },
+    process.env.JWT_SECRET,
+    {
+      subject: aluno._id.toString(),
+      expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+    }
+  );
+
+  return { aluno, alunoNovo, token };
+}
+
+export default { loginProfessor, loginAdmin, loginAluno, entrarTurma };
