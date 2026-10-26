@@ -447,3 +447,63 @@ test('9: respostasRegistradasEm é persistido e recuperado corretamente', async 
   assert.equal(resposta.status, 200);
   assert.ok(corpo.progresso.respostasRegistradasEm);
 });
+
+test('recupera colisao MongoDB 11000 no inicio e retorna o progresso que apareceu', async () => {
+  const salvarMock = ProgressoAtividade.prototype.save;
+  let primeiraTentativa = true;
+  ProgressoAtividade.prototype.save = async function salvarComColisao() {
+    if (primeiraTentativa) {
+      primeiraTentativa = false;
+      await salvarMock.call(this);
+      const erro = new Error('Colisao de chave unica simulada');
+      erro.code = 11000;
+      throw erro;
+    }
+    return salvarMock.call(this);
+  };
+
+  const resposta = await iniciar();
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 200);
+  assert.equal(corpo.sucesso, true);
+  assert.equal(corpo.progresso.status, 'iniciada');
+  assert.equal(String(corpo.progresso.aluno), alunoAId);
+  assert.equal(String(corpo.progresso.atividade), atividadeId);
+  assert.equal(progressos.size, 1);
+});
+
+test('falha ao registrar recompensa reverte a conclusao e nao deixa movimento parcial', async () => {
+  await iniciar();
+
+  substituir(MovimentacaoMoeda, 'create', async () => {
+    throw new Error('Falha simulada ao registrar recompensa');
+  });
+  substituir(mongoose, 'startSession', async () => ({
+    async withTransaction(operacao) {
+      const progressosAntes = new Map([...progressos].map(([chave, progresso]) => [chave, {
+        ...progresso,
+        respostas: []
+      }]));
+      const totalMovimentacoesAntes = movimentacoes.length;
+      try {
+        return await operacao();
+      } catch (erro) {
+        progressos = progressosAntes;
+        movimentacoes.length = totalMovimentacoesAntes;
+        throw erro;
+      }
+    },
+    async endSession() {}
+  }));
+
+  const resposta = await concluir();
+  const corpo = await resposta.json();
+  const progresso = progressos.get(chaveProgresso(alunoAId, atividadeId));
+
+  assert.equal(resposta.status, 500);
+  assert.deepEqual(corpo, { sucesso: false, mensagem: 'Ocorreu um erro interno no servidor.' });
+  assert.equal(progresso.status, 'iniciada');
+  assert.equal(progresso.concluidaEm, null);
+  assert.equal(movimentacoes.length, 0);
+});
