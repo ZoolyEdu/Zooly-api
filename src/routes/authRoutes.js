@@ -2,74 +2,14 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import Professor from '../models/Professor.js';
 import Aluno from '../models/Aluno.js';
 import Turma from '../models/Turma.js';
+import authController from '../controllers/authController.js';
 
 const router = Router();
 
 // Login do professor
-router.post('/login', async (req, res, next) => {
-  try {
-    const { email, senha } = req.body;
-
-    if (
-      typeof email !== 'string' ||
-      typeof senha !== 'string' ||
-      !email.trim() ||
-      !senha
-    ) {
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: 'E-mail e senha são obrigatórios.'
-      });
-    }
-
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({
-        sucesso: false,
-        mensagem: 'Autenticação não configurada no servidor.'
-      });
-    }
-
-    const professor = await Professor.findOne({
-      email: email.trim().toLowerCase()
-    }).select('+senha');
-
-    if (!professor || !(await bcrypt.compare(senha, professor.senha))) {
-      return res.status(401).json({
-        sucesso: false,
-        mensagem: 'E-mail ou senha inválidos.'
-      });
-    }
-
-    const token = jwt.sign(
-      {
-        tipo: 'professor',
-        nome: professor.nome
-      },
-      process.env.JWT_SECRET,
-      {
-        subject: professor._id.toString(),
-        expiresIn: process.env.JWT_EXPIRES_IN || '1h'
-      }
-    );
-
-    return res.status(200).json({
-      sucesso: true,
-      mensagem: 'Login realizado com sucesso.',
-      token,
-      usuario: {
-        id: professor._id,
-        nome: professor.nome,
-        email: professor.email,
-        tipo: 'professor'
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+router.post('/login', authController.loginProfessor);
 
 // Login do administrador
 router.post('/admin/login', async (req, res, next) => {
