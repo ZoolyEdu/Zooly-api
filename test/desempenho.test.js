@@ -171,6 +171,15 @@ test('professor não consulta outra escola e trocar ID de aluno não amplia aces
   assert.equal((await get(`/desempenho/alunos/${alunoB}`, token())).status, 404);
 });
 
+test('GET student performance returns 400 with the current message for a malformed ID', async () => {
+  const response = await get('/desempenho/alunos/id-invalido', token());
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    sucesso: false,
+    mensagem: 'O identificador informado é inválido.'
+  });
+});
+
 test('exporta PDF semanal válido com cabeçalhos, turma, período e indicadores', async () => {
   const response = await get(`/desempenho/turmas/${turmaA}/semanal/pdf?data=2026-10-21`, token());
   assert.equal(response.status, 200);
