@@ -100,4 +100,58 @@ async function loginAdmin(req, res, next) {
   }
 }
 
-export default { loginProfessor, loginAdmin };
+async function loginAluno(req, res, next) {
+  try {
+    const { ra, senha } = req.body;
+
+    if (
+      typeof ra !== 'string' ||
+      !ra.trim() ||
+      typeof senha !== 'string' ||
+      !senha
+    ) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: 'RA e senha são obrigatórios.'
+      });
+    }
+
+    const resultado = await authService.loginAluno(ra, senha);
+
+    if (resultado.erro === 'jwt-nao-configurado') {
+      return res.status(500).json({
+        sucesso: false,
+        mensagem: 'Autenticação não configurada no servidor.'
+      });
+    }
+
+    if (resultado.erro === 'credenciais-invalidas') {
+      return res.status(401).json({
+        sucesso: false,
+        mensagem: 'RA ou senha inválidos.'
+      });
+    }
+
+    const { aluno, turma, token } = resultado;
+
+    return res.status(200).json({
+      sucesso: true,
+      mensagem: aluno.cadastroInicialConcluido
+        ? 'Login realizado com sucesso.'
+        : 'Login realizado. É necessário concluir o cadastro inicial.',
+      token,
+      cadastroInicialPendente: !aluno.cadastroInicialConcluido,
+      usuario: {
+        id: aluno._id,
+        ra: aluno.ra,
+        nome: aluno.nomeCompleto,
+        turma: turma._id,
+        tipo: 'aluno'
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export default { loginProfessor, loginAdmin, loginAluno };

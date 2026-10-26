@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import Aluno from '../models/Aluno.js';
 import Professor from '../models/Professor.js';
+import Turma from '../models/Turma.js';
 
 async function loginProfessor(email, senha) {
   if (!process.env.JWT_SECRET) {
@@ -61,4 +63,44 @@ async function loginAdmin(email, senha) {
   return { token, emailAdmin };
 }
 
-export default { loginProfessor, loginAdmin };
+async function loginAluno(ra, senha) {
+  if (!process.env.JWT_SECRET) {
+    return { erro: 'jwt-nao-configurado' };
+  }
+
+  const aluno = await Aluno.findOne({
+    ra: ra.trim()
+  });
+
+  if (!aluno) {
+    return { erro: 'credenciais-invalidas' };
+  }
+
+  const turma = await Turma.findById(aluno.turma)
+    .select('+senhaAcessoHash');
+
+  if (
+    !turma ||
+    turma.arquivada ||
+    !turma.senhaAcessoHash ||
+    !(await bcrypt.compare(senha, turma.senhaAcessoHash))
+  ) {
+    return { erro: 'credenciais-invalidas' };
+  }
+
+  const token = jwt.sign(
+    {
+      tipo: 'aluno',
+      nome: aluno.nomeCompleto || 'Aluno'
+    },
+    process.env.JWT_SECRET,
+    {
+      subject: aluno._id.toString(),
+      expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+    }
+  );
+
+  return { aluno, turma, token };
+}
+
+export default { loginProfessor, loginAdmin, loginAluno };
