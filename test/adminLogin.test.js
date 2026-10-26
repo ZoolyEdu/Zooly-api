@@ -129,15 +129,17 @@ test('campos ausentes ou inválidos retornam HTTP 400', async () => {
   });
 });
 
-test('corpo JSON vazio retorna HTTP 400 com a mensagem de campos obrigatórios', async () => {
+test('corpo ausente, null ou vazio retorna HTTP 400 com a mensagem de campos obrigatórios', async () => {
   await configurarVariaveis(configuracao(), async () => {
-    const resposta = await postLogin({});
+    for (const corpo of [undefined, null, {}]) {
+      const resposta = await postLogin(corpo);
 
-    assert.equal(resposta.status, 400);
-    assert.deepEqual(await resposta.json(), {
-      sucesso: false,
-      mensagem: mensagemCamposObrigatorios
-    });
+      assert.equal(resposta.status, 400);
+      assert.deepEqual(await resposta.json(), {
+        sucesso: false,
+        mensagem: mensagemCamposObrigatorios
+      });
+    }
   });
 });
 

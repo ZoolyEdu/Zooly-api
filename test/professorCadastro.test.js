@@ -276,6 +276,21 @@ test('login aceita senha correta usando hash armazenado e rejeita senha incorret
   }
 });
 
+test('corpo ausente, null ou vazio no login de professor retorna HTTP 400 sem consultar models', async () => {
+  for (const corpo of [undefined, null, {}]) {
+    const resposta = await postJson('/auth/login', corpo);
+
+    assert.equal(resposta.status, 400);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: 'E-mail e senha são obrigatórios.'
+    });
+  }
+
+  assert.deepEqual(chamadas.buscaProfessor, []);
+  assert.deepEqual(chamadas.projecoes, []);
+});
+
 test('login de professor usa validade padrão de uma hora quando JWT_EXPIRES_IN não está definido', async () => {
   const senhaHash = await bcrypt.hash(senhaOriginal, 4);
   const professor = new Professor({

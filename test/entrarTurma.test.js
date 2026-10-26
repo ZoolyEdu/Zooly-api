@@ -335,6 +335,22 @@ test('campos ausentes ou inválidos retornam HTTP 400', async () => {
   assert.equal(chamadas.criacoes.length, 0);
 });
 
+test('corpo ausente, null ou vazio retorna HTTP 400 sem consultar models ou emitir token', async () => {
+  for (const corpo of [undefined, null, {}]) {
+    const resposta = await postEntrarTurma(corpo);
+
+    assert.equal(resposta.status, 400);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: mensagemCamposObrigatorios
+    });
+  }
+
+  assert.deepEqual(chamadas.buscasTurma, []);
+  assert.deepEqual(chamadas.buscasAluno, []);
+  assert.equal(chamadas.criacoes.length, 0);
+});
+
 test('JWT_SECRET ausente retorna HTTP 500 antes de consultar os models', async () => {
   delete process.env.JWT_SECRET;
 

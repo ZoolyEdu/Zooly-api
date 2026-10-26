@@ -19,6 +19,7 @@ import bnccRoutes from './routes/bnccRoutes.js';
 const app = express();
 
 app.use(cors());
+app.use('/api/auth', express.json({ strict: false }));
 app.use(express.json());
 
 // Rota inicial

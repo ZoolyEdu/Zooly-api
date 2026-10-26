@@ -52,7 +52,7 @@ async function loginProfessor(req, res, next) {
 
 async function loginAdmin(req, res, next) {
   try {
-    const { email, senha } = req.body;
+    const { email, senha } = req.body ?? {};
 
     if (
       typeof email !== 'string' ||
@@ -102,7 +102,7 @@ async function loginAdmin(req, res, next) {
 
 async function loginAluno(req, res, next) {
   try {
-    const { ra, senha } = req.body;
+    const { ra, senha } = req.body ?? {};
 
     if (
       typeof ra !== 'string' ||
@@ -156,7 +156,7 @@ async function loginAluno(req, res, next) {
 
 async function entrarTurma(req, res, next) {
   try {
-    const { ra, codigoPermanente, senha } = req.body;
+    const { ra, codigoPermanente, senha } = req.body ?? {};
 
     if (
       typeof ra !== 'string' ||
