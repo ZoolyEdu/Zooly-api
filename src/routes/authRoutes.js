@@ -12,71 +12,7 @@ const router = Router();
 router.post('/login', authController.loginProfessor);
 
 // Login do administrador
-router.post('/admin/login', async (req, res, next) => {
-  try {
-    const { email, senha } = req.body;
-
-    if (
-      typeof email !== 'string' ||
-      typeof senha !== 'string' ||
-      !email.trim() ||
-      !senha
-    ) {
-      return res.status(400).json({
-        sucesso: false,
-        mensagem: 'E-mail e senha são obrigatórios.'
-      });
-    }
-
-    const emailAdmin = process.env.ADMIN_EMAIL;
-    const hashAdmin = process.env.ADMIN_SENHA_HASH;
-
-    if (!process.env.JWT_SECRET || !emailAdmin || !hashAdmin) {
-      return res.status(500).json({
-        sucesso: false,
-        mensagem: 'Autenticação do administrador não configurada.'
-      });
-    }
-
-    const emailValido =
-      email.trim().toLowerCase() === emailAdmin.trim().toLowerCase();
-
-    const senhaValida = await bcrypt.compare(senha, hashAdmin);
-
-    if (!emailValido || !senhaValida) {
-      return res.status(401).json({
-        sucesso: false,
-        mensagem: 'E-mail ou senha inválidos.'
-      });
-    }
-
-    const token = jwt.sign(
-      {
-        tipo: 'administrador',
-        nome: 'Administrador'
-      },
-      process.env.JWT_SECRET,
-      {
-        subject: 'admin-configurado',
-        expiresIn: process.env.JWT_EXPIRES_IN || '1h'
-      }
-    );
-
-    return res.status(200).json({
-      sucesso: true,
-      mensagem: 'Login de administrador realizado com sucesso.',
-      token,
-      usuario: {
-        id: 'admin-configurado',
-        nome: 'Administrador',
-        email: emailAdmin,
-        tipo: 'administrador'
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+router.post('/admin/login', authController.loginAdmin);
 
 // Login do aluno já cadastrado
 router.post('/aluno/login', async (req, res, next) => {

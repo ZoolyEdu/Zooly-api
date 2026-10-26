@@ -30,4 +30,35 @@ async function loginProfessor(email, senha) {
   return { professor, token };
 }
 
-export default { loginProfessor };
+async function loginAdmin(email, senha) {
+  const emailAdmin = process.env.ADMIN_EMAIL;
+  const hashAdmin = process.env.ADMIN_SENHA_HASH;
+
+  if (!process.env.JWT_SECRET || !emailAdmin || !hashAdmin) {
+    return { erro: 'configuracao-admin-nao-configurada' };
+  }
+
+  const emailValido =
+    email.trim().toLowerCase() === emailAdmin.trim().toLowerCase();
+  const senhaValida = await bcrypt.compare(senha, hashAdmin);
+
+  if (!emailValido || !senhaValida) {
+    return { erro: 'credenciais-invalidas' };
+  }
+
+  const token = jwt.sign(
+    {
+      tipo: 'administrador',
+      nome: 'Administrador'
+    },
+    process.env.JWT_SECRET,
+    {
+      subject: 'admin-configurado',
+      expiresIn: process.env.JWT_EXPIRES_IN || '1h'
+    }
+  );
+
+  return { token, emailAdmin };
+}
+
+export default { loginProfessor, loginAdmin };
