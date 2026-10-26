@@ -82,6 +82,19 @@ export function calcularSaldoMoedas(alunoId) {
   return calcularSaldoComSessao(alunoId);
 }
 
+export async function validarAlunoMoedas(alunoId) {
+  if (!mongoose.isValidObjectId(alunoId)) return { erro: 'identidade-invalida' };
+  const aluno = await Aluno.findById(alunoId).select('_id');
+  return aluno ? { valido: true } : { erro: 'aluno-nao-encontrado' };
+}
+
+export function listarMovimentacoes({ alunoId, pagina, limite }) {
+  return MovimentacaoMoeda.find({ aluno: alunoId })
+    .sort({ createdAt: -1, _id: -1 })
+    .skip((pagina - 1) * limite)
+    .limit(limite);
+}
+
 export async function gastarMoedas({ alunoId, quantidade, motivo }) {
   if (!Number.isSafeInteger(quantidade) || quantidade < 1) {
     throw erroMoedas('A quantidade deve ser um inteiro positivo.', 400);

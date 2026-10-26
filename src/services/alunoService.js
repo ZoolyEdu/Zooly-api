@@ -1,6 +1,8 @@
 import Aluno from '../models/Aluno.js';
 import Professor from '../models/Professor.js';
 import Turma from '../models/Turma.js';
+import AvatarAluno from '../models/AvatarAluno.js';
+import catalogoAvatares from '../config/catalogoAvatares.js';
 
 function professorTemAcesso(professor, turma) {
   return professor.escolas.some(
@@ -113,4 +115,15 @@ async function concluirCadastroInicial({ alunoId, nomeCompleto, codigoPermanente
   return { aluno };
 }
 
-export default { cadastrar, listarPorTurma, atualizar, concluirCadastroInicial };
+async function selecionarAvatar({ alunoId, avatarId }) {
+  if (!catalogoAvatares.some(avatar => avatar.id === avatarId)) return { erro: 'avatar-nao-encontrado' };
+
+  const possui = await AvatarAluno.exists({ aluno: alunoId, avatarId });
+  if (!possui) return { erro: 'avatar-nao-adquirido' };
+
+  const atualizacao = await Aluno.updateOne({ _id: alunoId }, { $set: { avatarSelecionado: avatarId } });
+  if ((atualizacao.matchedCount ?? atualizacao.n) === 0) return { erro: 'aluno-nao-encontrado' };
+  return { avatarSelecionado: avatarId };
+}
+
+export default { cadastrar, listarPorTurma, atualizar, concluirCadastroInicial, selecionarAvatar };

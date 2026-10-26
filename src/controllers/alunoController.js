@@ -247,4 +247,29 @@ async function concluirCadastroInicial(req, res) {
   }
 }
 
-export default { cadastrar, listarPorTurma, atualizar, concluirCadastroInicial };
+async function selecionarAvatar(req, res, next) {
+  try {
+    const body = req.body ?? {};
+    const { avatarId } = body;
+    if (typeof avatarId !== 'string' || Object.keys(body).some(chave => chave !== 'avatarId')) {
+      return res.status(400).json({ sucesso: false, mensagem: 'Informe somente avatarId.' });
+    }
+
+    const resultado = await alunoService.selecionarAvatar({ alunoId: req.usuario.id, avatarId });
+    if (resultado.erro === 'avatar-nao-encontrado') {
+      return res.status(404).json({ sucesso: false, mensagem: 'Avatar não encontrado.' });
+    }
+    if (resultado.erro === 'avatar-nao-adquirido') {
+      return res.status(409).json({ sucesso: false, mensagem: 'O avatar ainda não foi adquirido.' });
+    }
+    if (resultado.erro === 'aluno-nao-encontrado') {
+      return res.status(404).json({ sucesso: false, mensagem: 'Aluno não encontrado.' });
+    }
+
+    return res.status(200).json({ sucesso: true, avatarSelecionado: resultado.avatarSelecionado });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export default { cadastrar, listarPorTurma, atualizar, concluirCadastroInicial, selecionarAvatar };
