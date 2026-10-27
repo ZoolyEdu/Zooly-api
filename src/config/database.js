@@ -1,14 +1,72 @@
 import mongoose from 'mongoose';
-import dns from 'node:dns';
+import { Resolver, setServers } from 'node:dns';
 
-dns.setServers(['1.1.1.1', '8.8.8.8']);
+const resolvedoresAlternativos = ['1.1.1.1', '8.8.8.8'];
+
+function codigoSeguro(...codigos) {
+  return codigos.find(codigo => typeof codigo === 'string' && /^[A-Z0-9_]+$/.test(codigo))
+    ?? 'MONGODB_CONNECTION_FAILED';
+}
+
+function resolverSrv(resolver, consulta) {
+  return new Promise((resolve, reject) => {
+    resolver.resolveSrv(consulta, (erro, registros) => {
+      if (erro) reject(erro);
+      else resolve(registros);
+    });
+  });
+}
+
+async function prepararDnsAtlas(uri) {
+  if (!uri.startsWith('mongodb+srv://')) return;
+
+  let host;
+  try {
+    host = new URL(uri).hostname;
+  } catch {
+    throw new Error('MONGODB_URI não contém uma URI MongoDB válida.');
+  }
+
+  const consulta = `_mongodb._tcp.${host}`;
+  try {
+    await resolverSrv(new Resolver({ timeout: 2500, tries: 1 }), consulta);
+    return;
+  } catch {
+    const alternativo = new Resolver({ timeout: 2500, tries: 1 });
+    alternativo.setServers(resolvedoresAlternativos);
+    try {
+      await resolverSrv(alternativo, consulta);
+      // Só altera o resolvedor do processo quando o DNS do sistema falha.
+      setServers(resolvedoresAlternativos);
+    } catch (erro) {
+      const falhaDns = new Error('Não foi possível resolver o endereço SRV do MongoDB Atlas.');
+      falhaDns.code = codigoSeguro(erro.code, 'MONGODB_DNS_FAILED');
+      throw falhaDns;
+    }
+  }
+}
 
 export async function connectDatabase() {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('MongoDB Atlas conectado com sucesso!');
-  } catch (error) {
-    console.error('Erro ao conectar ao MongoDB:', error.message);
-    process.exit(1);
+  const uri = process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    const erro = new Error('MONGODB_URI não está configurada.');
+    erro.code = 'MONGODB_URI_MISSING';
+    throw erro;
   }
+
+  try {
+    await prepararDnsAtlas(uri);
+    await mongoose.connect(uri);
+  } catch (error) {
+    if (error.code && error.message === 'Não foi possível resolver o endereço SRV do MongoDB Atlas.') {
+      throw error;
+    }
+
+    const codigo = codigoSeguro(error?.cause?.code, error?.code);
+    const falhaConexao = new Error('Não foi possível conectar ao MongoDB Atlas.');
+    falhaConexao.code = codigo;
+    throw falhaConexao;
+  }
+
+  console.log('MongoDB Atlas conectado com sucesso!');
 }
