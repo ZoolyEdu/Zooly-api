@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Resolver, setServers } from 'node:dns';
+import dns, { Resolver } from 'node:dns';
 
 const resolvedoresAlternativos = ['1.1.1.1', '8.8.8.8'];
 
@@ -37,7 +37,7 @@ async function prepararDnsAtlas(uri) {
     try {
       await resolverSrv(alternativo, consulta);
       // Só altera o resolvedor do processo quando o DNS do sistema falha.
-      setServers(resolvedoresAlternativos);
+      dns.setServers(resolvedoresAlternativos);
     } catch (erro) {
       const falhaDns = new Error('Não foi possível resolver o endereço SRV do MongoDB Atlas.');
       falhaDns.code = codigoSeguro(erro.code, 'MONGODB_DNS_FAILED');
