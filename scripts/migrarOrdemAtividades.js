@@ -11,10 +11,11 @@ function erroSeguro(mensagem) {
 async function migrar() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGODB_URI não está configurada.');
+  const dbName = process.env.MONGODB_DB_NAME?.trim() || 'zooly';
 
   mongoose.set('autoIndex', false);
   const { default: Atividade } = await import('../src/models/Atividade.js');
-  await mongoose.connect(uri, { autoIndex: false });
+  await mongoose.connect(uri, { autoIndex: false, dbName });
 
   try {
     let indices = [];

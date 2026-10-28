@@ -54,9 +54,11 @@ export async function connectDatabase() {
     throw erro;
   }
 
+  const dbName = process.env.MONGODB_DB_NAME?.trim() || 'zooly';
+
   try {
     await prepararDnsAtlas(uri);
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, { dbName });
   } catch (error) {
     if (error.code && error.message === 'Não foi possível resolver o endereço SRV do MongoDB Atlas.') {
       throw error;

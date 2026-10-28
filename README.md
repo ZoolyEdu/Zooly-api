@@ -287,3 +287,9 @@ O campo opcional `prazo` aceita uma data válida e não bloqueia o acesso quando
 Projeto acadêmico em desenvolvimento no curso de Desenvolvimento de Software Multiplataforma (DSM), da FATEC Registro.
 
 **Equipe:** KofiTech.
+
+### Banco de dados nos ambientes
+
+A aplicacao usa o banco `zooly` por padrao, configurado explicitamente pela opcao `dbName` do Mongoose. Defina `MONGODB_DB_NAME` para substituir esse nome; a opcao prevalece sobre o nome no caminho de `MONGODB_URI`.
+
+Os testes automatizados nao carregam `.env` nem conectam a um MongoDB real. Para testes de integracao locais, use uma instancia e credenciais isoladas e defina `MONGODB_DB_NAME=zooly_test` junto de uma `MONGODB_URI` dessa instancia. Nunca reutilize a URI de producao.
