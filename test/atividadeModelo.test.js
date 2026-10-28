@@ -170,3 +170,20 @@ test('rejeita status de publicação fora dos valores definidos', async () => {
   const dados = preencherRespostasCorretas(dadosValidos({ status: 'arquivada' }));
   await errosDeValidacao(dados, 'status');
 });
+
+test('recompensa da atividade é opcional para documentos legados e aceita somente inteiro positivo seguro', async () => {
+  const legado = new Atividade(preencherRespostasCorretas(dadosValidos()));
+  await legado.validate();
+  assert.equal(legado.recompensaMoedas, undefined);
+
+  const valida = new Atividade(preencherRespostasCorretas(dadosValidos({ recompensaMoedas: 25 })));
+  await valida.validate();
+  assert.equal(valida.recompensaMoedas, 25);
+
+  for (const recompensaMoedas of [0, -1, 1.5, null, Number.MAX_SAFE_INTEGER + 1]) {
+    await errosDeValidacao(
+      preencherRespostasCorretas(dadosValidos({ recompensaMoedas })),
+      'recompensaMoedas'
+    );
+  }
+});

@@ -15,7 +15,14 @@ function erroTransacoesIndisponiveis(erro) {
     /transaction numbers are only allowed|replica set|transactions are not supported/i.test(erro?.message ?? '');
 }
 
-function obterRecompensaConclusao() {
+function obterRecompensaConclusao(recompensaAtividade) {
+  if (recompensaAtividade !== undefined) {
+    if (!Number.isSafeInteger(recompensaAtividade) || recompensaAtividade < 1) {
+      throw new Error('A recompensa da atividade deve ser um inteiro positivo.');
+    }
+    return recompensaAtividade;
+  }
+
   const configurada = process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
   const quantidade = configurada === undefined || configurada.trim() === '' ? 10 : Number(configurada);
   if (!Number.isSafeInteger(quantidade) || quantidade < 1) {
@@ -82,6 +89,19 @@ export function calcularSaldoMoedas(alunoId) {
   return calcularSaldoComSessao(alunoId);
 }
 
+export async function validarAlunoMoedas(alunoId) {
+  if (!mongoose.isValidObjectId(alunoId)) return { erro: 'identidade-invalida' };
+  const aluno = await Aluno.findById(alunoId).select('_id');
+  return aluno ? { valido: true } : { erro: 'aluno-nao-encontrado' };
+}
+
+export function listarMovimentacoes({ alunoId, pagina, limite }) {
+  return MovimentacaoMoeda.find({ aluno: alunoId })
+    .sort({ createdAt: -1, _id: -1 })
+    .skip((pagina - 1) * limite)
+    .limit(limite);
+}
+
 export async function gastarMoedas({ alunoId, quantidade, motivo }) {
   if (!Number.isSafeInteger(quantidade) || quantidade < 1) {
     throw erroMoedas('A quantidade deve ser um inteiro positivo.', 400);
@@ -127,8 +147,8 @@ export async function comprarAvatar({ alunoId, avatarId, preco }) {
   });
 }
 
-export async function concluirAtividadeComRecompensa({ alunoId, atividadeId }) {
-  const recompensa = obterRecompensaConclusao();
+export async function concluirAtividadeComRecompensa({ alunoId, atividadeId, recompensaAtividade }) {
+  const recompensa = obterRecompensaConclusao(recompensaAtividade);
   return comTransacaoDeAluno(alunoId, async sessao => {
     let consulta = ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
     if (typeof consulta.session === 'function') consulta = consulta.session(sessao);

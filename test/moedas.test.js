@@ -144,6 +144,34 @@ test('saldo é calculado pela soma dos ganhos menos os gastos e histórico perte
   assert.deepEqual((await historicoDeOutroAluno.json()).movimentacoes.map(item => item.motivo), ['Outro aluno']);
 });
 
+test('pagination of movements rejects invalid values and accepts its documented limits', async () => {
+  const invalidas = [
+    '?limite=0', '?limite=-1', '?limite=1.5', '?limite=101', '?limite=abc',
+    '?pagina=0', '?pagina=-1', '?pagina=1.5', '?pagina=abc',
+    '?pagina=9007199254740991&limite=100'
+  ];
+  for (const parametros of invalidas) {
+    const resposta = await request(`/moedas/movimentacoes${parametros}`);
+    assert.equal(resposta.status, 400, parametros);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: 'Informe página positiva e limite inteiro entre 1 e 100.'
+    });
+  }
+
+  const limiteMinimo = await request('/moedas/movimentacoes?pagina=1&limite=1');
+  const corpoMinimo = await limiteMinimo.json();
+  assert.equal(limiteMinimo.status, 200);
+  assert.equal(corpoMinimo.pagina, 1);
+  assert.equal(corpoMinimo.limite, 1);
+
+  const limiteMaximo = await request('/moedas/movimentacoes?pagina=1&limite=100');
+  const corpoMaximo = await limiteMaximo.json();
+  assert.equal(limiteMaximo.status, 200);
+  assert.equal(corpoMaximo.pagina, 1);
+  assert.equal(corpoMaximo.limite, 100);
+});
+
 test('gasto válido registra movimento e saldo insuficiente não permite saldo negativo', async () => {
   ledger.push({ aluno: alunoId, tipo: 'ganho', quantidade: 12, motivo: 'Teste' });
   const resposta = await request('/moedas/gastos', { method: 'POST', body: { quantidade: 5, motivo: 'Item cosmético' } });

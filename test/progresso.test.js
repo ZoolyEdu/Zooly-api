@@ -274,6 +274,44 @@ test('conclusão registra o estado e horário sem criar progresso duplicado', as
   assert.equal(movimentacoes.filter(item => item.tipo === 'ganho').length, 1);
 });
 
+test('conclusões concedem a recompensa de cada atividade e não repetem ganhos', async () => {
+  const recompensaAnterior = process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
+  process.env.MOEDAS_RECOMPENSA_CONCLUSAO = '11';
+  atividades.get(atividadeId).recompensaMoedas = 3;
+  atividades.get(atividadeOrdem2Id).recompensaMoedas = 17;
+
+  try {
+    await iniciar(atividadeId);
+    assert.equal((await concluir(atividadeId)).status, 200);
+    await iniciar(atividadeOrdem2Id);
+    assert.equal((await concluir(atividadeOrdem2Id)).status, 200);
+    assert.equal((await concluir(atividadeOrdem2Id)).status, 200);
+
+    const ganhos = movimentacoes.filter(item => item.tipo === 'ganho');
+    assert.deepEqual(ganhos.map(item => item.quantidade), [3, 17]);
+    assert.deepEqual(ganhos.map(item => String(item.atividade)), [atividadeId, atividadeOrdem2Id]);
+    assert.equal(progressos.get(chaveProgresso(alunoAId, atividadeOrdem2Id)).status, 'concluida');
+    assert.equal((await (await request('/moedas/saldo', { accessToken: token() })).json()).saldo, 20);
+  } finally {
+    if (recompensaAnterior === undefined) delete process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
+    else process.env.MOEDAS_RECOMPENSA_CONCLUSAO = recompensaAnterior;
+  }
+});
+
+test('atividade legada sem recompensa usa a configuração global compatível', async () => {
+  const recompensaAnterior = process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
+  process.env.MOEDAS_RECOMPENSA_CONCLUSAO = '7';
+  try {
+    assert.equal(atividades.get(atividadeId).recompensaMoedas, undefined);
+    await iniciar();
+    assert.equal((await concluir()).status, 200);
+    assert.equal(movimentacoes.find(item => item.tipo === 'ganho').quantidade, 7);
+  } finally {
+    if (recompensaAnterior === undefined) delete process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
+    else process.env.MOEDAS_RECOMPENSA_CONCLUSAO = recompensaAnterior;
+  }
+});
+
 test('conclusões repetidas e simultâneas concedem somente uma recompensa', async () => {
   await iniciar();
   const respostas = await Promise.all([concluir(), concluir()]);
@@ -446,4 +484,64 @@ test('9: respostasRegistradasEm é persistido e recuperado corretamente', async 
   const corpo = await resposta.json();
   assert.equal(resposta.status, 200);
   assert.ok(corpo.progresso.respostasRegistradasEm);
+});
+
+test('recupera colisao MongoDB 11000 no inicio e retorna o progresso que apareceu', async () => {
+  const salvarMock = ProgressoAtividade.prototype.save;
+  let primeiraTentativa = true;
+  ProgressoAtividade.prototype.save = async function salvarComColisao() {
+    if (primeiraTentativa) {
+      primeiraTentativa = false;
+      await salvarMock.call(this);
+      const erro = new Error('Colisao de chave unica simulada');
+      erro.code = 11000;
+      throw erro;
+    }
+    return salvarMock.call(this);
+  };
+
+  const resposta = await iniciar();
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 200);
+  assert.equal(corpo.sucesso, true);
+  assert.equal(corpo.progresso.status, 'iniciada');
+  assert.equal(String(corpo.progresso.aluno), alunoAId);
+  assert.equal(String(corpo.progresso.atividade), atividadeId);
+  assert.equal(progressos.size, 1);
+});
+
+test('falha ao registrar recompensa reverte a conclusao e nao deixa movimento parcial', async () => {
+  await iniciar();
+
+  substituir(MovimentacaoMoeda, 'create', async () => {
+    throw new Error('Falha simulada ao registrar recompensa');
+  });
+  substituir(mongoose, 'startSession', async () => ({
+    async withTransaction(operacao) {
+      const progressosAntes = new Map([...progressos].map(([chave, progresso]) => [chave, {
+        ...progresso,
+        respostas: []
+      }]));
+      const totalMovimentacoesAntes = movimentacoes.length;
+      try {
+        return await operacao();
+      } catch (erro) {
+        progressos = progressosAntes;
+        movimentacoes.length = totalMovimentacoesAntes;
+        throw erro;
+      }
+    },
+    async endSession() {}
+  }));
+
+  const resposta = await concluir();
+  const corpo = await resposta.json();
+  const progresso = progressos.get(chaveProgresso(alunoAId, atividadeId));
+
+  assert.equal(resposta.status, 500);
+  assert.deepEqual(corpo, { sucesso: false, mensagem: 'Ocorreu um erro interno no servidor.' });
+  assert.equal(progresso.status, 'iniciada');
+  assert.equal(progresso.concluidaEm, null);
+  assert.equal(movimentacoes.length, 0);
 });

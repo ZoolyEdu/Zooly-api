@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import app from '../src/app.js';
 import Escola from '../src/models/Escola.js';
 import Professor from '../src/models/Professor.js';
@@ -215,19 +216,128 @@ test('login aceita senha correta usando hash armazenado e rejeita senha incorret
   });
   professores.set(professor.email, professor);
 
-  const sucesso = await postJson('/auth/login', {
-    email: ' PROFESSORA@EXAMPLE.COM ',
-    senha: senhaOriginal
-  });
-  const corpoSucesso = await sucesso.json();
-  assert.equal(sucesso.status, 200);
-  assert.equal(typeof corpoSucesso.token, 'string');
-  assert.deepEqual(chamadas.buscaProfessor[0], { email: 'professora@example.com' });
-  assert.ok(chamadas.projecoes.includes('+senha'));
+  const expiracaoAnterior = process.env.JWT_EXPIRES_IN;
+  process.env.JWT_EXPIRES_IN = '2h';
 
-  const falha = await postJson('/auth/login', {
-    email: 'professora@example.com',
-    senha: 'senha-incorreta'
+  try {
+    const sucesso = await postJson('/auth/login', {
+      email: ' PROFESSORA@EXAMPLE.COM ',
+      senha: senhaOriginal
+    });
+    const corpoSucesso = await sucesso.json();
+    const payload = jwt.verify(corpoSucesso.token, segredoTeste);
+
+    assert.equal(sucesso.status, 200);
+    assert.equal(corpoSucesso.sucesso, true);
+    assert.equal(corpoSucesso.mensagem, 'Login realizado com sucesso.');
+    assert.deepEqual(Object.keys(corpoSucesso).sort(), ['mensagem', 'sucesso', 'token', 'usuario']);
+    assert.deepEqual(corpoSucesso.usuario, {
+      id: professor._id.toString(),
+      nome: professor.nome,
+      email: professor.email,
+      tipo: 'professor'
+    });
+    assert.deepEqual(chamadas.buscaProfessor[0], { email: 'professora@example.com' });
+    assert.ok(chamadas.projecoes.includes('+senha'));
+    assert.equal(payload.tipo, 'professor');
+    assert.equal(payload.nome, professor.nome);
+    assert.equal(payload.sub, professor._id.toString());
+    assert.equal(payload.exp - payload.iat, 2 * 60 * 60);
+    assert.equal(Object.hasOwn(corpoSucesso.usuario, 'senha'), false);
+    assert.equal(JSON.stringify(corpoSucesso).includes(senhaHash), false);
+    assert.equal(JSON.stringify(corpoSucesso).includes(senhaOriginal), false);
+
+    const senhaIncorreta = await postJson('/auth/login', {
+      email: 'professora@example.com',
+      senha: 'senha-incorreta'
+    });
+    const corpoSenhaIncorreta = await senhaIncorreta.json();
+    assert.equal(senhaIncorreta.status, 401);
+    assert.deepEqual(corpoSenhaIncorreta, {
+      sucesso: false,
+      mensagem: 'E-mail ou senha inválidos.'
+    });
+
+    const professorInexistente = await postJson('/auth/login', {
+      email: 'inexistente@example.com',
+      senha: senhaOriginal
+    });
+    assert.equal(professorInexistente.status, 401);
+
+    const camposAusentes = await postJson('/auth/login', { email: '', senha: '' });
+    assert.equal(camposAusentes.status, 400);
+    assert.deepEqual(await camposAusentes.json(), {
+      sucesso: false,
+      mensagem: 'E-mail e senha são obrigatórios.'
+    });
+  } finally {
+    if (expiracaoAnterior === undefined) delete process.env.JWT_EXPIRES_IN;
+    else process.env.JWT_EXPIRES_IN = expiracaoAnterior;
+  }
+});
+
+test('corpo ausente, null ou vazio no login de professor retorna HTTP 400 sem consultar models', async () => {
+  for (const corpo of [undefined, null, {}]) {
+    const resposta = await postJson('/auth/login', corpo);
+
+    assert.equal(resposta.status, 400);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: 'E-mail e senha são obrigatórios.'
+    });
+  }
+
+  assert.deepEqual(chamadas.buscaProfessor, []);
+  assert.deepEqual(chamadas.projecoes, []);
+});
+
+test('login de professor usa validade padrão de uma hora quando JWT_EXPIRES_IN não está definido', async () => {
+  const senhaHash = await bcrypt.hash(senhaOriginal, 4);
+  const professor = new Professor({
+    _id: '507f1f77bcf86cd799439103',
+    nome: 'Professora Padrão',
+    email: 'padrao@example.com',
+    senha: senhaHash
   });
-  assert.equal(falha.status, 401);
+  professores.set(professor.email, professor);
+
+  const expiracaoAnterior = process.env.JWT_EXPIRES_IN;
+  delete process.env.JWT_EXPIRES_IN;
+
+  try {
+    const resposta = await postJson('/auth/login', {
+      email: professor.email,
+      senha: senhaOriginal
+    });
+    const corpo = await resposta.json();
+    const payload = jwt.verify(corpo.token, segredoTeste);
+
+    assert.equal(resposta.status, 200);
+    assert.equal(payload.exp - payload.iat, 60 * 60);
+  } finally {
+    if (expiracaoAnterior === undefined) delete process.env.JWT_EXPIRES_IN;
+    else process.env.JWT_EXPIRES_IN = expiracaoAnterior;
+  }
+});
+
+test('login de professor retorna erro de configuração quando JWT_SECRET está ausente', async () => {
+  const segredoAnterior = process.env.JWT_SECRET;
+  delete process.env.JWT_SECRET;
+
+  try {
+    const resposta = await postJson('/auth/login', {
+      email: 'professora@example.com',
+      senha: senhaOriginal
+    });
+
+    assert.equal(resposta.status, 500);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: 'Autenticação não configurada no servidor.'
+    });
+    assert.deepEqual(chamadas.buscaProfessor, []);
+  } finally {
+    if (segredoAnterior === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = segredoAnterior;
+  }
 });

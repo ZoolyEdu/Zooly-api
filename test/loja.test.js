@@ -12,6 +12,7 @@ import { comprarAvatar } from '../src/services/moedaService.js';
 const segredo = 'segredo-local-loja-sem-dados-reais';
 const alunoA = '507f1f77bcf86cd799439501';
 const alunoB = '507f1f77bcf86cd799439503';
+const alunoC = '507f1f77bcf86cd799439504';
 const originais = new Map();
 let servidor;
 let baseUrl;
@@ -208,6 +209,33 @@ test('seleção exige propriedade, e inventário e seleção ficam isolados por 
   assert.equal((await catalogoB.json()).avatares[0].adquirido, false);
   assert.equal((await request('/alunos/me/avatar', { method: 'PUT', accessToken: token('aluno', alunoB), body: { avatarId: 'avatar-01' } })).status, 409);
   assert.equal(selecionados.get(alunoB), null);
+});
+
+test('selection validates its body and catalog and returns 404 when the student is missing', async () => {
+  for (const body of [
+    {},
+    { avatarId: 1 },
+    { avatarId: 'avatar-01', aluno: alunoA }
+  ]) {
+    const resposta = await request('/alunos/me/avatar', { method: 'PUT', body });
+    assert.equal(resposta.status, 400);
+    assert.deepEqual(await resposta.json(), { sucesso: false, mensagem: 'Informe somente avatarId.' });
+  }
+
+  const desconhecido = await request('/alunos/me/avatar', {
+    method: 'PUT', body: { avatarId: 'avatar-inexistente' }
+  });
+  assert.equal(desconhecido.status, 404);
+  assert.deepEqual(await desconhecido.json(), { sucesso: false, mensagem: 'Avatar não encontrado.' });
+
+  inventario.push({ aluno: alunoC, avatarId: 'avatar-01' });
+  const alunoAusente = await request('/alunos/me/avatar', {
+    method: 'PUT',
+    accessToken: token('aluno', alunoC),
+    body: { avatarId: 'avatar-01' }
+  });
+  assert.equal(alunoAusente.status, 404);
+  assert.deepEqual(await alunoAusente.json(), { sucesso: false, mensagem: 'Aluno não encontrado.' });
 });
 
 test('falhas em movimentação ou propriedade revertem ambas as gravações', async () => {

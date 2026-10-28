@@ -103,6 +103,14 @@ const atividadeSchema = new Schema(
       default: 1,
       min: [1, 'A ordem mínima da atividade deve ser 1.']
     },
+    recompensaMoedas: {
+      type: Number,
+      min: [1, 'A recompensa deve ser um inteiro positivo.'],
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'A recompensa deve ser um inteiro positivo.'
+      }
+    },
     historia: {
       type: origemHistoriaSchema,
       required: [true, 'A história da atividade é obrigatória.']
@@ -164,6 +172,12 @@ atividadeSchema.pre('validate', function validarDataPublicacao() {
   }
   if (this.status === 'rascunho' && this.publicadoEm) {
     this.invalidate('publicadoEm', 'Rascunhos não podem ter data de publicação.');
+  }
+});
+
+atividadeSchema.pre('validate', function validarRecompensaNula() {
+  if (this.recompensaMoedas === null) {
+    this.invalidate('recompensaMoedas', 'A recompensa deve ser um inteiro positivo.');
   }
 });
 

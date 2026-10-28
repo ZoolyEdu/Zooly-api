@@ -34,11 +34,14 @@ let baseUrl;
 let turmas;
 let historias;
 let atividades;
+let progressosRelacionados;
+let movimentacoesRelacionadas;
 let chamadas;
 let jwtAnterior;
 
 function substituir(modelo, metodo, implementacao) {
-  const chave = `${modelo.modelName}#${metodo}`;
+  const nomeModelo = modelo.modelName ?? (modelo === mongoose ? 'mongoose' : 'model');
+  const chave = `${nomeModelo}#${metodo}`;
   const [alvo, nomeMetodo] = metodo.includes('.') ? metodo.split('.') : ['static', metodo];
   const objeto = alvo === 'prototype' ? modelo.prototype : modelo;
   if (!originais.has(chave)) originais.set(chave, objeto[nomeMetodo]);
@@ -60,10 +63,12 @@ function instalarMocks() {
   ]);
   historias = new Map([[historiaId, { _id: historiaId, titulo: 'História oficial', conteudo: 'Conteúdo oficial.' }]]);
   atividades = new Map();
+  progressosRelacionados = new Map();
+  movimentacoesRelacionadas = new Map();
   chamadas = {
     turma: [], historia: [], atividade: [], criacao: 0,
     filtroLista: null, projecaoLista: null, ordenacao: null, filtroTurmas: null,
-    projecaoTurmas: null, exclusao: 0
+    projecaoTurmas: null, exclusao: 0, progressosExcluidos: 0, movimentosDesvinculados: 0
   };
 
   substituir(Turma, 'findById', async id => {
@@ -91,8 +96,37 @@ function instalarMocks() {
     const encontrada = atividades.get(String(id));
     return encontrada ? new Atividade(encontrada) : null;
   });
-  substituir(ProgressoAtividade, 'exists', async () => null);
-  substituir(MovimentacaoMoeda, 'exists', async () => null);
+  substituir(ProgressoAtividade, 'exists', async filtro => progressosRelacionados.get(String(filtro.atividade)) ?? null);
+  substituir(ProgressoAtividade, 'deleteMany', async (filtro, options) => {
+    assert.ok(options.session);
+    chamadas.progressosExcluidos += 1;
+    const encontrado = progressosRelacionados.get(String(filtro.atividade));
+    if (encontrado) progressosRelacionados.delete(String(filtro.atividade));
+    return { deletedCount: encontrado ? 1 : 0 };
+  });
+  substituir(MovimentacaoMoeda, 'exists', async filtro => movimentacoesRelacionadas.get(String(filtro.atividade)) ?? null);
+  substituir(MovimentacaoMoeda, 'updateMany', async (filtro, update, options) => {
+    assert.ok(options.session);
+    chamadas.movimentosDesvinculados += 1;
+    const movimento = movimentacoesRelacionadas.get(String(filtro.atividade));
+    if (movimento) delete movimento.atividade;
+    return { modifiedCount: movimento ? 1 : 0 };
+  });
+  substituir(mongoose, 'startSession', async () => ({
+    async withTransaction(operacao) {
+      const snapshotProgressos = new Map(progressosRelacionados);
+      const snapshotMovimentos = new Map([...movimentacoesRelacionadas].map(([key, value]) => [key, { ...value }]));
+      const snapshotAtividades = new Map(atividades);
+      try { return await operacao(); }
+      catch (error) {
+        progressosRelacionados = snapshotProgressos;
+        movimentacoesRelacionadas = snapshotMovimentos;
+        atividades = snapshotAtividades;
+        throw error;
+      }
+    },
+    async endSession() {}
+  }));
   substituir(Atividade, 'exists', async filtro => {
     const encontrada = [...atividades.values()].find(atividade =>
       String(atividade.turma) === String(filtro.turma) && Number(atividade.ordem) === Number(filtro.ordem)
@@ -282,7 +316,7 @@ beforeEach(instalarMocks);
 afterEach(() => {
   for (const [chave, metodoOriginal] of originais) {
     const [nomeModelo, nomeMetodo] = chave.split('#');
-    const modelo = { Professor, Turma, Historia, Atividade, ProgressoAtividade, MovimentacaoMoeda }[nomeModelo];
+    const modelo = { Professor, Turma, Historia, Atividade, ProgressoAtividade, MovimentacaoMoeda, mongoose }[nomeModelo];
     const [alvo, nome] = nomeMetodo.includes('.') ? nomeMetodo.split('.') : ['static', nomeMetodo];
     const objeto = alvo === 'prototype' ? modelo.prototype : modelo;
     objeto[nome] = metodoOriginal;
@@ -395,6 +429,17 @@ test('rejeita ordem manual ausente de inteiro positivo', async () => {
   assert.equal(chamadas.criacao, 0);
 });
 
+test('cria atividade com recompensa configurada e rejeita valores inválidos', async () => {
+  const criada = await post(atividadeBody({ recompensaMoedas: 25 }), emitirToken());
+  const corpo = await criada.json();
+  assert.equal(criada.status, 201);
+  assert.equal(corpo.atividade.recompensaMoedas, 25);
+
+  for (const recompensaMoedas of [0, -1, 1.5, '10', null, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal((await post(atividadeBody({ recompensaMoedas }), emitirToken())).status, 400);
+  }
+});
+
 test('rejeita IDs malformados da turma ou da história oficial', async () => {
   assert.equal((await post(atividadeBody({ turma: 'turma-invalida' }), emitirToken())).status, 400);
   assert.equal((await post(atividadeBody({
@@ -471,6 +516,24 @@ test('criador edita atividades em rascunho e publicadas sem alterar turma, autor
     assert.ok(mongoose.isValidObjectId(atualizada.questoes[0].alternativas[1]._id));
     assert.notEqual(String(atualizada.questoes[0].alternativas[1]._id), alternativaAId);
   }
+});
+
+test('criador edita recompensa e valores inválidos não alteram a atividade', async () => {
+  registrarAtividade();
+  const update = edicaoBody({ recompensaMoedas: 32 });
+  const resposta = await put(atividadeId, update, emitirToken());
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.equal(corpo.atividade.recompensaMoedas, 32);
+  assert.equal(atividades.get(atividadeId).recompensaMoedas, 32);
+
+  for (const recompensaMoedas of [0, -3, 4.2, '12', null]) {
+    const invalid = await put(atividadeId, edicaoBody({ recompensaMoedas }), emitirToken());
+    assert.equal(invalid.status, 400);
+    assert.equal(atividades.get(atividadeId).recompensaMoedas, 32);
+  }
+  assert.equal((await put(atividadeId, edicaoBody({ recompensaMoedas: 3 }), emitirToken('aluno'))).status, 403);
+  assert.equal(atividades.get(atividadeId).recompensaMoedas, 32);
 });
 
 test('edição substitui o conjunto completo de questões, alternativas e respostas corretas', async () => {
@@ -899,18 +962,72 @@ test('criador exclui atividade sem registros relacionados', async () => {
   assert.equal(chamadas.exclusao, 1);
 });
 
-test('atividade com recompensa registrada não pode ser excluída', async () => {
+test('excluir atividade concluída apaga progresso, preserva ledger e remove referência órfã', async () => {
   registrarAtividade();
-  const existsOriginal = MovimentacaoMoeda.exists;
-  MovimentacaoMoeda.exists = async filtro => String(filtro.atividade) === atividadeId ? { _id: 'movimentacao' } : null;
+  progressosRelacionados.set(atividadeId, { atividade: atividadeId, status: 'concluida', respostas: [{ id: 'resposta' }] });
+  movimentacoesRelacionadas.set(atividadeId, { atividade: atividadeId, tipo: 'ganho', quantidade: 15, motivo: 'Conclusão', aluno: 'aluno-a' });
+  registrarOutraAtividade();
+  progressosRelacionados.set(atividadeOutraId, { atividade: atividadeOutraId, status: 'iniciada' });
+  movimentacoesRelacionadas.set(atividadeOutraId, { atividade: atividadeOutraId, tipo: 'ganho', quantidade: 20, motivo: 'Outra missão', aluno: 'aluno-b' });
+  const resposta = await remover(atividadeId, emitirToken());
+
+  assert.equal(resposta.status, 200);
+  assert.equal(atividades.has(atividadeId), false);
+  assert.equal(progressosRelacionados.has(atividadeId), false);
+  assert.equal(movimentacoesRelacionadas.has(atividadeId), true);
+  const movimento = movimentacoesRelacionadas.get(atividadeId);
+  assert.equal(Object.hasOwn(movimento, 'atividade'), false);
+  assert.equal(movimento.quantidade, 15);
+  assert.equal(movimento.motivo, 'Conclusão');
+  assert.equal(movimento.aluno, 'aluno-a');
+  assert.equal(atividades.has(atividadeOutraId), true);
+  assert.equal(progressosRelacionados.has(atividadeOutraId), true);
+  assert.equal(movimentacoesRelacionadas.get(atividadeOutraId).atividade, atividadeOutraId);
+  assert.equal(movimentacoesRelacionadas.get(atividadeOutraId).quantidade, 20);
+  assert.equal(chamadas.progressosExcluidos, 1);
+  assert.equal(chamadas.movimentosDesvinculados, 1);
+  assert.equal(chamadas.exclusao, 1);
+});
+
+test('falha durante exclusão transacional não deixa alterações parciais', async () => {
+  registrarAtividade();
+  progressosRelacionados.set(atividadeId, { atividade: atividadeId, status: 'concluida' });
+  movimentacoesRelacionadas.set(atividadeId, { atividade: atividadeId, tipo: 'ganho', quantidade: 9 });
+  const updateOriginal = MovimentacaoMoeda.updateMany;
+  MovimentacaoMoeda.updateMany = async () => { throw new Error('falha simulada ao desvincular ledger'); };
 
   try {
     const resposta = await remover(atividadeId, emitirToken());
-    assert.equal(resposta.status, 409);
+    assert.equal(resposta.status, 500);
     assert.equal(atividades.has(atividadeId), true);
-    assert.equal(chamadas.exclusao, 0);
+    assert.equal(progressosRelacionados.has(atividadeId), true);
+    assert.equal(movimentacoesRelacionadas.get(atividadeId).atividade, atividadeId);
+    assert.equal(movimentacoesRelacionadas.get(atividadeId).quantidade, 9);
   } finally {
-    MovimentacaoMoeda.exists = existsOriginal;
+    MovimentacaoMoeda.updateMany = updateOriginal;
+  }
+});
+
+test('MongoDB sem suporte a transações retorna 503 e preserva todos os registros', async () => {
+  registrarAtividade();
+  progressosRelacionados.set(atividadeId, { atividade: atividadeId, status: 'iniciada' });
+  movimentacoesRelacionadas.set(atividadeId, { atividade: atividadeId, tipo: 'ganho', quantidade: 8 });
+  const sessionOriginal = mongoose.startSession;
+  mongoose.startSession = async () => {
+    const error = new Error('Transaction numbers are only allowed on a replica set member or mongos');
+    error.code = 20;
+    throw error;
+  };
+
+  try {
+    const resposta = await remover(atividadeId, emitirToken());
+    assert.equal(resposta.status, 503);
+    assert.equal(atividades.has(atividadeId), true);
+    assert.equal(progressosRelacionados.has(atividadeId), true);
+    assert.equal(movimentacoesRelacionadas.get(atividadeId).atividade, atividadeId);
+    assert.equal(movimentacoesRelacionadas.get(atividadeId).quantidade, 8);
+  } finally {
+    mongoose.startSession = sessionOriginal;
   }
 });
 
