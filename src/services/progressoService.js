@@ -169,7 +169,11 @@ async function concluir({ atividadeId, alunoId }) {
   if (vinculo.erro) return vinculo;
 
   if (!await validarDesbloqueioSequencial(alunoId, atividade)) return { erro: 'atividade-bloqueada-conclusao' };
-  return { resultado: await concluirAtividadeComRecompensa({ alunoId, atividadeId }) };
+  return { resultado: await concluirAtividadeComRecompensa({
+    alunoId,
+    atividadeId,
+    recompensaAtividade: atividade.recompensaMoedas
+  }) };
 }
 
 async function listarDoAluno(alunoId) {

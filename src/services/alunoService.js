@@ -41,8 +41,8 @@ async function listarPorTurma({ turmaId, professorId }) {
   }
 
   const alunos = await Aluno.find({ turma: turma._id })
-    .select('ra nomeCompleto sexo cadastroInicialConcluido turma createdAt')
-    .sort({ nomeCompleto: 1, ra: 1 });
+    .select('_id nomeCompleto sexo cadastroInicialConcluido turma createdAt')
+    .sort({ nomeCompleto: 1, _id: 1 });
 
   return { alunos };
 }

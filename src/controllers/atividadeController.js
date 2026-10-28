@@ -86,7 +86,7 @@ async function excluir(req, res, next) {
       'atividade-id-invalido': [400, 'O identificador da atividade é inválido.'],
       'atividade-nao-encontrada': [404, 'Atividade não encontrada.'],
       'somente-autor-exclui': [403, 'Somente o autor pode excluir esta atividade.'],
-      'atividade-com-registros': [409, 'A atividade possui registros relacionados e não pode ser excluída.']
+      'atividade-com-registros': [409, 'A atividade possui registros relacionados que não podem ser tratados com segurança.']
     });
     if (erro) return erro;
 

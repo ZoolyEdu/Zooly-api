@@ -15,7 +15,14 @@ function erroTransacoesIndisponiveis(erro) {
     /transaction numbers are only allowed|replica set|transactions are not supported/i.test(erro?.message ?? '');
 }
 
-function obterRecompensaConclusao() {
+function obterRecompensaConclusao(recompensaAtividade) {
+  if (recompensaAtividade !== undefined) {
+    if (!Number.isSafeInteger(recompensaAtividade) || recompensaAtividade < 1) {
+      throw new Error('A recompensa da atividade deve ser um inteiro positivo.');
+    }
+    return recompensaAtividade;
+  }
+
   const configurada = process.env.MOEDAS_RECOMPENSA_CONCLUSAO;
   const quantidade = configurada === undefined || configurada.trim() === '' ? 10 : Number(configurada);
   if (!Number.isSafeInteger(quantidade) || quantidade < 1) {
@@ -140,8 +147,8 @@ export async function comprarAvatar({ alunoId, avatarId, preco }) {
   });
 }
 
-export async function concluirAtividadeComRecompensa({ alunoId, atividadeId }) {
-  const recompensa = obterRecompensaConclusao();
+export async function concluirAtividadeComRecompensa({ alunoId, atividadeId, recompensaAtividade }) {
+  const recompensa = obterRecompensaConclusao(recompensaAtividade);
   return comTransacaoDeAluno(alunoId, async sessao => {
     let consulta = ProgressoAtividade.findOne({ aluno: alunoId, atividade: atividadeId });
     if (typeof consulta.session === 'function') consulta = consulta.session(sessao);

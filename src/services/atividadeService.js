@@ -4,7 +4,11 @@ import Historia from '../models/Historia.js';
 import Professor from '../models/Professor.js';
 import Turma from '../models/Turma.js';
 
-const camposAtividadeEntrada = ['turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo'];
+const camposAtividadeEntrada = ['turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo', 'recompensaMoedas'];
+
+function recompensaValida(valor) {
+  return Number.isSafeInteger(valor) && valor >= 1;
+}
 
 function ehObjeto(valor) {
   return valor !== null && typeof valor === 'object' && !Array.isArray(valor);
@@ -51,10 +55,11 @@ function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {})
 
 function validarCorpoEdicao(body) {
   return ehObjeto(body) &&
-    !temCampoDesconhecido(body, ['titulo', 'ordem', 'historia', 'questoes', 'prazo']) &&
+    !temCampoDesconhecido(body, ['titulo', 'ordem', 'historia', 'questoes', 'prazo', 'recompensaMoedas']) &&
     typeof body.titulo === 'string' &&
     Boolean(body.titulo.trim()) &&
     (body.ordem === undefined || (typeof body.ordem === 'number' && Number.isInteger(body.ordem) && body.ordem >= 1)) &&
+    (body.recompensaMoedas === undefined || recompensaValida(body.recompensaMoedas)) &&
     prazoDeEntradaValido(body.prazo) &&
     Object.hasOwn(body, 'historia') &&
     Object.hasOwn(body, 'questoes') &&
@@ -153,6 +158,7 @@ async function criar({ body, professorId }) {
     typeof body.titulo !== 'string' ||
     !body.titulo.trim() ||
     (body.ordem !== undefined && (typeof body.ordem !== 'number' || !Number.isInteger(body.ordem) || body.ordem < 1)) ||
+    (body.recompensaMoedas !== undefined && !recompensaValida(body.recompensaMoedas)) ||
     !prazoDeEntradaValido(body.prazo) ||
     !validarCamposAninhados(body)
   ) return { erro: 'dados-atividade-invalidos' };
@@ -169,6 +175,7 @@ async function criar({ body, professorId }) {
     status: 'rascunho',
     prazo: body.prazo ?? null
   });
+  if (body.recompensaMoedas !== undefined) atividade.recompensaMoedas = body.recompensaMoedas;
 
   await atividade.validate();
 
@@ -254,15 +261,29 @@ function pathsReferenciandoAtividade(schema, prefixo = '') {
   return paths;
 }
 
-async function existeDadoRelacionado(atividadeId) {
+async function referenciasDaAtividade(atividadeId, sessao) {
+  const referencias = [];
   for (const nomeModelo of mongoose.modelNames()) {
     if (nomeModelo === Atividade.modelName) continue;
     const Modelo = mongoose.model(nomeModelo);
     for (const path of pathsReferenciandoAtividade(Modelo.schema)) {
-      if (await Modelo.exists({ [path]: atividadeId })) return true;
+      let consulta = Modelo.exists({ [path]: atividadeId });
+      if (sessao && typeof consulta.session === 'function') consulta = consulta.session(sessao);
+      if (await consulta) referencias.push({ Modelo, path });
     }
   }
-  return false;
+  return referencias;
+}
+
+function erroHttp(mensagem, status) {
+  const erro = new Error(mensagem);
+  erro.status = status;
+  return erro;
+}
+
+function transacoesIndisponiveis(erro) {
+  return erro?.code === 20 || erro?.code === 303 ||
+    /transaction numbers are only allowed|replica set|transactions are not supported/i.test(erro?.message ?? '');
 }
 
 async function excluir({ atividadeId, professorId }) {
@@ -271,9 +292,44 @@ async function excluir({ atividadeId, professorId }) {
   const atividade = await Atividade.findById(atividadeId);
   if (!atividade) return { erro: 'atividade-nao-encontrada' };
   if (String(atividade.professorCriador) !== String(professorId)) return { erro: 'somente-autor-exclui' };
-  if (await existeDadoRelacionado(atividade._id)) return { erro: 'atividade-com-registros' };
+  const referencias = await referenciasDaAtividade(atividade._id);
+  if (referencias.length === 0) {
+    await atividade.deleteOne();
+    return { excluida: true };
+  }
 
-  await atividade.deleteOne();
+  if (referencias.some(({ Modelo }) => !['ProgressoAtividade', 'MovimentacaoMoeda'].includes(Modelo.modelName))) {
+    return { erro: 'atividade-com-registros' };
+  }
+
+  let sessao;
+  try {
+    sessao = await mongoose.startSession();
+    await sessao.withTransaction(async () => {
+      const referenciasAtuais = await referenciasDaAtividade(atividade._id, sessao);
+      if (referenciasAtuais.some(({ Modelo }) => !['ProgressoAtividade', 'MovimentacaoMoeda'].includes(Modelo.modelName))) {
+        throw erroHttp('A atividade possui referências que não podem ser removidas com segurança.', 409);
+      }
+
+      for (const { Modelo, path } of referenciasAtuais) {
+        const filtro = { [path]: atividade._id };
+        if (Modelo.modelName === 'MovimentacaoMoeda') {
+          await Modelo.updateMany(filtro, { $unset: { [path]: 1 } }, { session: sessao });
+        } else {
+          await Modelo.deleteMany(filtro, { session: sessao });
+        }
+      }
+      await atividade.deleteOne({ session: sessao });
+    });
+  } catch (erro) {
+    if (transacoesIndisponiveis(erro)) {
+      throw erroHttp('A exclusão com registros relacionados exige MongoDB com suporte a transações.', 503);
+    }
+    throw erro;
+  } finally {
+    if (sessao) await sessao.endSession();
+  }
+
   return { excluida: true };
 }
 
@@ -290,6 +346,7 @@ async function atualizar({ atividadeId, professorId, body }) {
   if (body.ordem !== undefined) atividade.ordem = body.ordem;
   atividade.historia = body.historia;
   atividade.prazo = body.prazo ?? null;
+  if (body.recompensaMoedas !== undefined) atividade.recompensaMoedas = body.recompensaMoedas;
   atividade.questoes = body.questoes.map(questao => ({ ...questao, respostasCorretas: [] }));
   if (!aplicarRespostasPorIndice(atividade, body.questoes)) return { erro: 'indice-resposta-invalido' };
 

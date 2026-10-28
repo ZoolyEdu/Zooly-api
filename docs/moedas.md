@@ -2,7 +2,7 @@
 
 ## Regra de recompensa
 
-Uma primeira transição do progresso de uma atividade publicada para `concluida` concede 10 moedas. O valor pode ser substituído por `MOEDAS_RECOMPENSA_CONCLUSAO`, que deve conter um inteiro positivo. Repetir a conclusão não cria outro ganho. Progresso que já estava concluído antes desta funcionalidade não recebe uma recompensa retroativa.
+Uma primeira transição do progresso de uma atividade publicada para `concluida` concede a quantidade `recompensaMoedas` configurada na atividade. O campo aceita inteiro positivo seguro. Para compatibilidade, atividades antigas sem esse campo e novas atividades criadas sem valor usam `MOEDAS_RECOMPENSA_CONCLUSAO`, cujo padrão é 10 e que deve conter um inteiro positivo. Repetir a conclusão não cria outro ganho. Progresso que já estava concluído antes desta funcionalidade não recebe uma recompensa retroativa.
 
 A recompensa efetiva é gravada na movimentação com sua quantidade e referência da atividade. Alterações posteriores na atividade não recalculam nem removem essa movimentação. Um índice único parcial impede mais de um ganho associado à mesma combinação aluno/atividade.
 

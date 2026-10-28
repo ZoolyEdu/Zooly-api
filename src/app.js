@@ -1,6 +1,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import corsOptions from './config/corsOptions.js';
 import healthRoutes from './routes/healthRoutes.js';
 import professorRoutes from './routes/professorRoutes.js';
 import authRoutes from './routes/authRoutes.js';
@@ -18,7 +19,7 @@ import bnccRoutes from './routes/bnccRoutes.js';
 
 const app = express();
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use('/api/auth', express.json({ strict: false }));
 app.use(express.json());
 

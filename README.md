@@ -73,6 +73,7 @@ Para criar uma atividade, envie `POST /api/atividades` com um token de professor
 {
   "turma": "507f1f77bcf86cd799439320",
   "titulo": "Atividade de leitura",
+  "recompensaMoedas": 15,
   "historia": {
     "tipo": "oficial",
     "historiaId": "507f1f77bcf86cd799439330"
@@ -92,6 +93,8 @@ Para criar uma atividade, envie `POST /api/atividades` com um token de professor
 
 `historia` também pode usar `{ "tipo": "propria", "texto": "..." }`. A origem deve ser uma história oficial existente ou um texto próprio, e o status inicial `rascunho` é definido pelo servidor.
 
+`recompensaMoedas` é opcional e aceita inteiro positivo seguro. Ao concluir a atividade, esse valor prevalece sobre `MOEDAS_RECOMPENSA_CONCLUSAO`; quando ausente, inclusive em atividades antigas, a API preserva o padrão configurado atual (10 moedas por padrão).
+
 Na edição completa por `PUT /api/atividades/:id`, mantenha os `_id`s das questões e alternativas existentes que deseja preservar. Esses IDs só podem ser reutilizados dentro da atividade e da questão a que já pertencem. Omita `_id` para questões ou alternativas novas; para marcar alternativas novas como corretas no mesmo envio, use índices começando em zero em `respostasCorretas` (por exemplo, `[0]` seleciona a primeira alternativa). A API converte os índices para os IDs gerados pelo Mongoose.
 
-O criador publica um rascunho com `PATCH /api/atividades/:id/publicar`. A API define `status: "publicada"` e registra `publicadoEm`; atividades já publicadas não podem ser publicadas novamente. O campo opcional `prazo` aceita uma data válida e não bloqueia o acesso quando vencido. `GET /api/atividades/publicadas` lista as atividades da mais antiga para a mais recente, usando `_id` como desempate. `DELETE /api/atividades/:id` exclui somente atividades sem registros de modelos que as referenciem.
+O criador publica um rascunho com `PATCH /api/atividades/:id/publicar`. A API define `status: "publicada"` e registra `publicadoEm`; atividades já publicadas não podem ser publicadas novamente. O campo opcional `prazo` aceita uma data válida e não bloqueia o acesso quando vencido. `GET /api/atividades/publicadas` lista as atividades da mais antiga para a mais recente, usando `_id` como desempate. `DELETE /api/atividades/:id` remove progresso e respostas associados em transação, preserva as movimentações financeiras e limpa somente a referência à atividade excluída. Veja [docs/exclusao-atividades.md](docs/exclusao-atividades.md).
