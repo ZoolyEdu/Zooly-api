@@ -20,6 +20,14 @@ const turmaSchema = new mongoose.Schema(
       min: [2000, "O ano escolar informado é inválido."],
       max: [2100, "O ano escolar informado é inválido."],
     },
+    periodo: {
+      type: String,
+      enum: ["Manhã", "Tarde"],
+    },
+    mascote: {
+      type: String,
+      enum: ["papagaio", "lagarto", "cobra", "sarue"],
+    },
     escola: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Escola",

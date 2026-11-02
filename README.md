@@ -282,6 +282,8 @@ O campo opcional `prazo` aceita uma data válida e não bloqueia o acesso quando
 
 `DELETE /api/atividades/:id` permite excluir somente atividades sem registros de outros models que as referenciem.
 
+Os contratos de rascunhos, detalhes protegidos, etapas da missão, habilidades BNCC, pontuação e campos de turma estão documentados em [docs/atividades.md](./docs/atividades.md).
+
 ## Status do projeto
 
 Projeto acadêmico em desenvolvimento no curso de Desenvolvimento de Software Multiplataforma (DSM), da FATEC Registro.

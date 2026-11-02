@@ -188,12 +188,28 @@ test('POST /turmas valida os campos e rejeita escola ou ano inválidos antes de 
   assert.deepEqual(chamadas.dadosCriacao, []);
 });
 
+test('POST /turmas rejeita período e mascote fora das opções visuais disponíveis', async () => {
+  for (const body of [
+    { nome: 'Turma', escolaId: escolaAId, anoEscolar: 2026, periodo: 'Noite' },
+    { nome: 'Turma', escolaId: escolaAId, anoEscolar: 2026, mascote: 'inventado' }
+  ]) {
+    const resposta = await requisitar('/turmas', { method: 'POST', body });
+    assert.equal(resposta.status, 400);
+    assert.deepEqual(await resposta.json(), {
+      sucesso: false,
+      mensagem: 'O período ou mascote informado é inválido.'
+    });
+  }
+  assert.deepEqual(chamadas.dadosCriacao, []);
+});
+
 test('POST /turmas usa a identidade do token, normaliza o nome e gera código permanente', async () => {
   const resposta = await requisitar('/turmas', {
     method: 'POST',
     body: {
       nome: '  Turma Nova  ', escolaId: escolaAId, anoEscolar: 2026,
-      professorResponsavel: professorOutroId, codigoPermanente: 'CLIENTE'
+      professorResponsavel: professorOutroId, codigoPermanente: 'CLIENTE',
+      periodo: 'Manhã', mascote: 'papagaio'
     }
   });
   const corpo = await resposta.json();
@@ -209,12 +225,16 @@ test('POST /turmas usa a identidade do token, normaliza o nome e gera código pe
   assert.equal(corpo.turma.anoEscolar, 2026);
   assert.equal(corpo.turma.escola, escolaAId);
   assert.equal(corpo.turma.professorResponsavel, professorId);
+  assert.equal(corpo.turma.periodo, 'Manhã');
+  assert.equal(corpo.turma.mascote, 'papagaio');
   assert.deepEqual(chamadas.dadosCriacao[0], {
     nome: 'Turma Nova',
     codigoPermanente: corpo.turma.codigoPermanente,
     anoEscolar: 2026,
     escola: escolaAId,
-    professorResponsavel: professorId
+    professorResponsavel: professorId,
+    periodo: 'Manhã',
+    mascote: 'papagaio'
   });
 });
 
@@ -319,7 +339,10 @@ test('GET /turmas/:id retorna turma autorizada com escola e professor preenchido
 test('PUT /turmas/:id altera nome e ano, ignora campos não permitidos e preserva demais dados', async () => {
   const resposta = await requisitar(`/turmas/${turmaAId}`, {
     method: 'PUT',
-    body: { nome: '  Nome atualizado  ', anoEscolar: 2027, escola: escolaBId, professorResponsavel: professorOutroId, codigoPermanente: 'ALTERADO' }
+    body: {
+      nome: '  Nome atualizado  ', anoEscolar: 2027, periodo: 'Tarde', mascote: 'cobra',
+      escola: escolaBId, professorResponsavel: professorOutroId, codigoPermanente: 'ALTERADO'
+    }
   });
   const corpo = await resposta.json();
 
@@ -331,6 +354,8 @@ test('PUT /turmas/:id altera nome e ano, ignora campos não permitidos e preserv
   assert.equal(corpo.turma.escola, escolaAId);
   assert.equal(corpo.turma.professorResponsavel, professorId);
   assert.equal(corpo.turma.codigoPermanente, 'TURMA-A');
+  assert.equal(corpo.turma.periodo, 'Tarde');
+  assert.equal(corpo.turma.mascote, 'cobra');
   assert.equal(chamadas.salvas, 1);
 });
 
@@ -341,7 +366,8 @@ test('PUT /turmas/:id valida nome e ano escolar e deixa turma intacta quando inv
 
   for (const body of [
     { nome: '' }, { nome: '   ' }, { nome: 7 },
-    { anoEscolar: 1999 }, { anoEscolar: 2101 }, { anoEscolar: 2026.5 }
+    { anoEscolar: 1999 }, { anoEscolar: 2101 }, { anoEscolar: 2026.5 },
+    { periodo: 'Noite' }, { mascote: 'inventado' }
   ]) {
     const resposta = await requisitar(`/turmas/${turmaAId}`, { method: 'PUT', body });
     assert.equal(resposta.status, 400);

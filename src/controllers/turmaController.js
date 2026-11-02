@@ -9,6 +9,7 @@ async function cadastrar(req, res, next) {
     const resultado = await turmaService.cadastrar({ body: req.body, professorId: req.usuario.id });
     const respostas = {
       'dados-invalidos': [400, 'Informe nome, escola válida e ano escolar válido.'],
+      'dados-complementares-invalidos': [400, 'O período ou mascote informado é inválido.'],
       'professor-nao-encontrado': [401, 'Professor não encontrado.'],
       'professor-sem-vinculo-escola': [403, 'Você não está vinculado a esta escola.'],
       'escola-nao-encontrada': [404, 'Escola não encontrada.'],
@@ -66,7 +67,8 @@ async function atualizar(req, res, next) {
       'turma-nao-encontrada': [404, 'Turma não encontrada.'],
       'acesso-nao-autorizado': [403, 'Acesso nao autorizado para esta turma.'],
       'nome-invalido': [400, 'O nome da turma é inválido.'],
-      'ano-escolar-invalido': [400, 'O ano escolar é inválido.']
+      'ano-escolar-invalido': [400, 'O ano escolar é inválido.'],
+      'dados-complementares-invalidos': [400, 'O período ou mascote informado é inválido.']
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];

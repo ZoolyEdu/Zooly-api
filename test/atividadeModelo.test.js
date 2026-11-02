@@ -83,6 +83,51 @@ test('aceita texto próprio sem referência a história oficial', async () => {
   assert.equal(atividade.historia.historiaId, undefined);
 });
 
+test('persiste etapas da missão e habilidades BNCC e calcula a pontuação total', async () => {
+  const dados = preencherRespostasCorretas(dadosValidos({
+    missao: { etapas: ['ler_texto', 'responder_perguntas'] },
+    habilidadesBncc: [{
+      codigo: 'EF01LP05',
+      texto: 'Reconhecer o sistema de escrita alfabética.',
+      etapa: 'EF'
+    }]
+  }));
+  dados.questoes[0].pontos = 12;
+  const atividade = new Atividade(dados);
+
+  await atividade.validate();
+
+  assert.deepEqual(atividade.missao.etapas, ['ler_texto', 'responder_perguntas']);
+  assert.equal(atividade.habilidadesBncc[0].codigo, 'EF01LP05');
+  assert.equal(atividade.questoes[0].tipo, 'multipla_escolha');
+  assert.equal(atividade.pontuacaoTotal, 12);
+});
+
+test('mantém documentos legados sem missão, BNCC e pontos consultáveis', async () => {
+  const legado = new Atividade(preencherRespostasCorretas(dadosValidos()));
+
+  await legado.validate();
+
+  assert.deepEqual(legado.missao.etapas, []);
+  assert.deepEqual(legado.habilidadesBncc, []);
+  assert.equal(legado.questoes[0].tipo, 'multipla_escolha');
+  assert.equal(legado.questoes[0].pontos, 0);
+  assert.equal(legado.pontuacaoTotal, 0);
+});
+
+test('rejeita pontos negativos ou não inteiros e etapas de missão não suportadas', async () => {
+  for (const pontos of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const dados = preencherRespostasCorretas(dadosValidos());
+    dados.questoes[0].pontos = pontos;
+    await errosDeValidacao(dados, 'questoes');
+  }
+
+  await errosDeValidacao(
+    preencherRespostasCorretas(dadosValidos({ missao: { etapas: ['etapa-inexistente'] } })),
+    'missao.etapas'
+  );
+});
+
 test('rejeita origem da história ausente ou sem origem selecionada', async () => {
   await errosDeValidacao(
     preencherRespostasCorretas(dadosValidos({ historia: undefined })),

@@ -8,7 +8,9 @@ const router = Router();
 router.use(autenticarToken, autorizarPerfil('professor'));
 
 router.post('/', atividadeController.criar);
+router.get('/', atividadeController.listarDoProfessor);
 router.get('/publicadas', atividadeController.listarPublicadas);
+router.get('/:id', atividadeController.consultar);
 router.patch('/:id/publicar', atividadeController.publicar);
 router.delete('/:id', atividadeController.excluir);
 router.put('/:id', atividadeController.atualizar);

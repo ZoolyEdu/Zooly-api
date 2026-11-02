@@ -137,6 +137,7 @@ function instalarMocks() {
     chamadas.filtroLista = filtro;
     const resultados = () => [...atividades.values()].filter(atividade => {
       if (filtro.status && atividade.status !== filtro.status) return false;
+      if (filtro.professorCriador && String(filtro.professorCriador) !== String(atividade.professorCriador)) return false;
       if (filtro.turma && !Array.isArray(filtro.turma.$in) && String(filtro.turma) !== String(atividade.turma)) return false;
       if (filtro.turma?.$in && !filtro.turma.$in.some(turma => String(turma) === String(atividade.turma))) return false;
       if (filtro._id?.$in && !filtro._id.$in.some(id => String(id) === String(atividade._id))) return false;
@@ -234,6 +235,18 @@ async function remover(id, accessToken) {
 
 async function listarPublicadas(accessToken) {
   return fetch(`${baseUrl}/atividades/publicadas`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+}
+
+async function listarMinhas(accessToken) {
+  return fetch(`${baseUrl}/atividades`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+}
+
+async function consultar(id, accessToken) {
+  return fetch(`${baseUrl}/atividades/${id}`, {
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
   });
 }
@@ -440,6 +453,65 @@ test('cria atividade com recompensa configurada e rejeita valores inválidos', a
   }
 });
 
+test('persiste missão e habilidades BNCC e calcula a pontuação total no servidor', async () => {
+  const resposta = await post(atividadeBody({
+    missao: { etapas: ['ler_texto', 'identificar_sons'] },
+    habilidadesBncc: [{
+      codigo: 'EF01LP05',
+      texto: 'Reconhecer o sistema de escrita alfabética.',
+      etapa: 'EF'
+    }],
+    questoes: [
+      {
+        enunciado: 'Primeira questão',
+        tipo: 'multipla_escolha',
+        pontos: 7,
+        alternativas: [
+          { _id: alternativaAId, texto: 'A' },
+          { _id: alternativaBId, texto: 'B' }
+        ],
+        respostasCorretas: [alternativaAId]
+      },
+      {
+        enunciado: 'Segunda questão',
+        pontos: 3,
+        alternativas: [
+          { _id: alternativaCId, texto: 'C' },
+          { _id: alternativaDId, texto: 'D' }
+        ],
+        respostasCorretas: [alternativaDId]
+      }
+    ]
+  }), emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 201);
+  assert.deepEqual(corpo.atividade.missao.etapas, ['ler_texto', 'identificar_sons']);
+  assert.deepEqual(corpo.atividade.habilidadesBncc.map(item => item.codigo), ['EF01LP05']);
+  assert.deepEqual(corpo.atividade.questoes.map(item => item.pontos), [7, 3]);
+  assert.equal(corpo.atividade.pontuacaoTotal, 10);
+  assert.equal(atividades.get(String(corpo.atividade._id)).pontuacaoTotal, 10);
+});
+
+test('rejeita etapas, habilidades BNCC, tipos e pontos inválidos', async () => {
+  const questao = atividadeBody().questoes[0];
+  const respostasInvalidas = [
+    { missao: { etapas: ['etapa-inexistente'] } },
+    { missao: { etapas: ['ler_texto', 'ler_texto'] } },
+    { habilidadesBncc: [{ codigo: 'EF99LP99', texto: 'Texto', etapa: 'EF' }] },
+    { habilidadesBncc: [{ codigo: 'EF01LP05', texto: 'Texto', etapa: 'EI' }] },
+    { questoes: [{ ...questao, tipo: 'resposta-aberta' }] },
+    ...[-1, 1.5, '10', null, Number.MAX_SAFE_INTEGER + 1].map(pontos => ({
+      questoes: [{ ...questao, pontos }]
+    }))
+  ];
+
+  for (const campos of respostasInvalidas) {
+    assert.equal((await post(atividadeBody(campos), emitirToken())).status, 400);
+  }
+  assert.equal(chamadas.criacao, 0);
+});
+
 test('rejeita IDs malformados da turma ou da história oficial', async () => {
   assert.equal((await post(atividadeBody({ turma: 'turma-invalida' }), emitirToken())).status, 400);
   assert.equal((await post(atividadeBody({
@@ -534,6 +606,34 @@ test('criador edita recompensa e valores inválidos não alteram a atividade', a
   }
   assert.equal((await put(atividadeId, edicaoBody({ recompensaMoedas: 3 }), emitirToken('aluno'))).status, 403);
   assert.equal(atividades.get(atividadeId).recompensaMoedas, 32);
+});
+
+test('edição persiste missão e BNCC, atualiza os pontos e recalcula a pontuação total', async () => {
+  registrarAtividade();
+  const questao = edicaoBody().questoes[0];
+  const corpoEdicao = edicaoBody({
+    missao: { etapas: ['completar_palavras', 'responder_perguntas'] },
+    habilidadesBncc: [{
+      codigo: 'EF01LP05',
+      texto: 'Reconhecer o sistema de escrita alfabética.',
+      etapa: 'EF'
+    }],
+    questoes: [{ ...questao, pontos: 9 }]
+  });
+
+  const resposta = await put(atividadeId, corpoEdicao, emitirToken());
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(corpo.atividade.missao.etapas, ['completar_palavras', 'responder_perguntas']);
+  assert.equal(corpo.atividade.habilidadesBncc[0].codigo, 'EF01LP05');
+  assert.equal(corpo.atividade.questoes[0].pontos, 9);
+  assert.equal(corpo.atividade.pontuacaoTotal, 9);
+
+  const segundaEdicao = await put(atividadeId, edicaoBody(), emitirToken());
+  const corpoSegundaEdicao = await segundaEdicao.json();
+  assert.equal(segundaEdicao.status, 200);
+  assert.equal(corpoSegundaEdicao.atividade.questoes[0].pontos, 9);
+  assert.equal(corpoSegundaEdicao.atividade.pontuacaoTotal, 9);
 });
 
 test('edição substitui o conjunto completo de questões, alternativas e respostas corretas', async () => {
@@ -878,6 +978,126 @@ test('atividades publicadas são ordenadas por publicação e desempate estável
 test('Mongoose recebe projeção de exclusão para respostas corretas em questões aninhadas', () => {
   const consulta = new mongoose.Query({}, {}, Atividade).select({ 'questoes.respostasCorretas': 0 });
   assert.deepEqual(consulta.projection(), { 'questoes.respostasCorretas': 0 });
+});
+
+test('GET /api/atividades lista rascunhos e publicadas do autor sem expor o gabarito', async () => {
+  registrarAtividade();
+  const publicadaId = '507f1f77bcf86cd799439374';
+  atividades.set(publicadaId, new Atividade({
+    ...atividadeBody(),
+    _id: publicadaId,
+    professorCriador: professorId,
+    status: 'publicada',
+    publicadoEm: new Date()
+  }).toObject());
+  const atividadeDeOutroProfessorId = '507f1f77bcf86cd799439375';
+  atividades.set(atividadeDeOutroProfessorId, new Atividade({
+    ...atividadeBody(),
+    _id: atividadeDeOutroProfessorId,
+    professorCriador: professorAlternativoId
+  }).toObject());
+
+  const resposta = await listarMinhas(emitirToken());
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(
+    new Set(corpo.atividades.map(atividade => atividade.status)),
+    new Set(['rascunho', 'publicada'])
+  );
+  assert.ok(corpo.atividades.every(atividade => String(atividade.professorCriador) === professorId));
+  assert.ok(corpo.atividades.every(atividade => atividade.questoes.every(questao => !Object.hasOwn(questao, 'respostasCorretas'))));
+  assert.deepEqual(chamadas.filtroLista, { professorCriador: professorId });
+});
+
+test('GET /api/atividades/:id retorna dados completos somente ao autor', async () => {
+  registrarAtividade();
+
+  const resposta = await consultar(atividadeId, emitirToken());
+  const corpo = await resposta.json();
+  assert.equal(resposta.status, 200);
+  assert.ok(corpo.atividade.questoes[0].respostasCorretas.length > 0);
+
+  assert.equal((await consultar(atividadeId, emitirToken('professor', professorAlternativoId))).status, 403);
+  assert.equal((await consultar(atividadeId, emitirToken('aluno'))).status, 403);
+  assert.equal((await consultar('id-invalido', emitirToken())).status, 400);
+  assert.equal((await consultar('507f1f77bcf86cd799439399', emitirToken())).status, 404);
+});
+
+test('fluxo HTTP cria, lista, reabre, atualiza e publica o mesmo rascunho', async () => {
+  const criacao = await post(atividadeBody({
+    recompensaMoedas: 10,
+    missao: { etapas: ['ler_texto'] },
+    habilidadesBncc: [{
+      codigo: 'EF01LP05',
+      texto: 'Reconhecer o sistema de escrita alfabética.',
+      etapa: 'EF'
+    }],
+    questoes: [{
+      enunciado: 'Questão do fluxo completo',
+      pontos: 8,
+      alternativas: [
+        { _id: alternativaAId, texto: 'Resposta correta' },
+        { _id: alternativaBId, texto: 'Outra resposta' }
+      ],
+      respostasCorretas: [alternativaAId]
+    }]
+  }), emitirToken());
+  const atividadeCriada = (await criacao.json()).atividade;
+  const id = String(atividadeCriada._id);
+
+  assert.equal(criacao.status, 201);
+  assert.equal(atividadeCriada.status, 'rascunho');
+  assert.equal((await listarMinhas(emitirToken())).status, 200);
+  const listagem = await (await listarMinhas(emitirToken())).json();
+  assert.equal(listagem.atividades.length, 1);
+  assert.equal(Object.hasOwn(listagem.atividades[0].questoes[0], 'respostasCorretas'), false);
+
+  const detalhe = await (await consultar(id, emitirToken())).json();
+  assert.equal(detalhe.atividade.pontuacaoTotal, 8);
+  assert.equal(detalhe.atividade.questoes[0].respostasCorretas.length, 1);
+  assert.deepEqual(detalhe.atividade.missao.etapas, ['ler_texto']);
+  assert.deepEqual(detalhe.atividade.habilidadesBncc, [{
+    codigo: 'EF01LP05',
+    texto: 'Reconhecer o sistema de escrita alfabética.',
+    etapa: 'EF'
+  }]);
+  assert.equal(detalhe.atividade.questoes[0].pontos, 8);
+
+  const questao = detalhe.atividade.questoes[0];
+  const edicao = await put(id, {
+    titulo: 'Atividade revisada no mesmo rascunho',
+    historia: { tipo: 'oficial', historiaId },
+    recompensaMoedas: 10,
+    missao: { etapas: ['responder_perguntas'] },
+    habilidadesBncc: detalhe.atividade.habilidadesBncc,
+    questoes: [{
+      _id: String(questao._id),
+      tipo: 'multipla_escolha',
+      enunciado: questao.enunciado,
+      pontos: 11,
+      alternativas: questao.alternativas.map(alternativa => ({
+        _id: String(alternativa._id),
+        texto: alternativa.texto
+      })),
+      respostasCorretas: questao.respostasCorretas.map(String)
+    }]
+  }, emitirToken());
+  assert.equal(edicao.status, 200);
+  assert.equal(atividades.size, 1);
+
+  const publicacao = await patch(id, {}, emitirToken());
+  assert.equal(publicacao.status, 200);
+  const detalhePublicado = await (await consultar(id, emitirToken())).json();
+  assert.equal(detalhePublicado.atividade.status, 'publicada');
+  assert.equal(detalhePublicado.atividade.pontuacaoTotal, 11);
+  assert.deepEqual(detalhePublicado.atividade.missao.etapas, ['responder_perguntas']);
+  assert.deepEqual(detalhePublicado.atividade.habilidadesBncc, [{
+    codigo: 'EF01LP05',
+    texto: 'Reconhecer o sistema de escrita alfabética.',
+    etapa: 'EF'
+  }]);
+  assert.equal(detalhePublicado.atividade.questoes[0].pontos, 11);
 });
 
 test('ordem omitida recebe automaticamente o próximo número disponível na turma', async () => {

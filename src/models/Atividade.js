@@ -2,6 +2,14 @@ import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
 
+export const etapasMissao = [
+  'ler_texto',
+  'completar_palavras',
+  'escutar_escrever',
+  'identificar_sons',
+  'responder_perguntas'
+];
+
 const alternativaSchema = new Schema(
   {
     texto: {
@@ -15,10 +23,27 @@ const alternativaSchema = new Schema(
 
 const questaoSchema = new Schema(
   {
+    tipo: {
+      type: String,
+      enum: {
+        values: ['multipla_escolha'],
+        message: 'O tipo de questão informado não é suportado.'
+      },
+      default: 'multipla_escolha'
+    },
     enunciado: {
       type: String,
       required: [true, 'O enunciado da questão é obrigatório.'],
       trim: true
+    },
+    pontos: {
+      type: Number,
+      min: [0, 'A pontuação da questão não pode ser negativa.'],
+      default: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'A pontuação da questão deve ser um inteiro não negativo.'
+      }
     },
     alternativas: {
       type: [alternativaSchema],
@@ -81,6 +106,43 @@ const origemHistoriaSchema = new Schema(
   { _id: false }
 );
 
+const missaoSchema = new Schema(
+  {
+    etapas: {
+      type: [{
+        type: String,
+        enum: {
+          values: etapasMissao,
+          message: 'A missão contém uma etapa não suportada.'
+        }
+      }],
+      default: []
+    }
+  },
+  { _id: false }
+);
+
+const habilidadeBnccSchema = new Schema(
+  {
+    codigo: {
+      type: String,
+      required: [true, 'O código da habilidade BNCC é obrigatório.'],
+      trim: true
+    },
+    texto: {
+      type: String,
+      required: [true, 'A descrição da habilidade BNCC é obrigatória.'],
+      trim: true
+    },
+    etapa: {
+      type: String,
+      required: [true, 'A etapa da habilidade BNCC é obrigatória.'],
+      enum: ['EI', 'EF']
+    }
+  },
+  { _id: false }
+);
+
 const atividadeSchema = new Schema(
   {
     turma: {
@@ -115,9 +177,26 @@ const atividadeSchema = new Schema(
       type: origemHistoriaSchema,
       required: [true, 'A história da atividade é obrigatória.']
     },
+    missao: {
+      type: missaoSchema,
+      default: () => ({ etapas: [] })
+    },
+    habilidadesBncc: {
+      type: [habilidadeBnccSchema],
+      default: []
+    },
     questoes: {
       type: [questaoSchema],
       default: []
+    },
+    pontuacaoTotal: {
+      type: Number,
+      min: [0, 'A pontuação total não pode ser negativa.'],
+      default: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'A pontuação total deve ser um inteiro não negativo.'
+      }
     },
     status: {
       type: String,
@@ -172,6 +251,30 @@ atividadeSchema.pre('validate', function validarDataPublicacao() {
   }
   if (this.status === 'rascunho' && this.publicadoEm) {
     this.invalidate('publicadoEm', 'Rascunhos não podem ter data de publicação.');
+  }
+});
+
+atividadeSchema.pre('validate', function calcularPontuacaoTotal() {
+  const total = (this.questoes ?? []).reduce(
+    (soma, questao) => soma + (Number.isSafeInteger(questao.pontos) ? questao.pontos : 0),
+    0
+  );
+  if (!Number.isSafeInteger(total)) {
+    this.invalidate('pontuacaoTotal', 'A soma das pontuações excede o limite permitido.');
+    return;
+  }
+  this.pontuacaoTotal = total;
+});
+
+atividadeSchema.pre('validate', function validarDadosAssociados() {
+  const etapas = this.missao?.etapas ?? [];
+  if (new Set(etapas).size !== etapas.length) {
+    this.invalidate('missao.etapas', 'As etapas da missão não podem se repetir.');
+  }
+
+  const codigos = (this.habilidadesBncc ?? []).map(habilidade => habilidade.codigo);
+  if (new Set(codigos).size !== codigos.length) {
+    this.invalidate('habilidadesBncc', 'As habilidades BNCC não podem se repetir.');
   }
 });
 

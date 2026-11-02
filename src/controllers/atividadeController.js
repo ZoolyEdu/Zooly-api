@@ -50,6 +50,36 @@ async function listarPublicadas(req, res, next) {
   }
 }
 
+async function listarDoProfessor(req, res, next) {
+  try {
+    const resultado = await atividadeService.listarDoProfessor(req.usuario.id);
+    if (resultado.erro === 'professor-nao-encontrado') {
+      return rejeitar(res, 401, 'Professor não encontrado.');
+    }
+    return res.status(200).json({ sucesso: true, atividades: resultado.atividades });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function consultar(req, res, next) {
+  try {
+    const resultado = await atividadeService.consultar({
+      atividadeId: req.params.id,
+      professorId: req.usuario.id
+    });
+    const erro = erroResultado(res, resultado.erro, {
+      'atividade-id-invalido': [400, 'O identificador da atividade é inválido.'],
+      'atividade-nao-encontrada': [404, 'Atividade não encontrada.'],
+      'somente-autor-consulta': [403, 'Somente o autor pode consultar esta atividade.']
+    });
+    if (erro) return erro;
+    return res.status(200).json({ sucesso: true, atividade: resultado.atividade });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function publicar(req, res, next) {
   try {
     const resultado = await atividadeService.publicar({
@@ -126,4 +156,4 @@ async function atualizar(req, res, next) {
   }
 }
 
-export default { criar, listarPublicadas, publicar, excluir, atualizar };
+export default { criar, listarDoProfessor, listarPublicadas, consultar, publicar, excluir, atualizar };

@@ -1,10 +1,14 @@
 import mongoose from 'mongoose';
-import Atividade from '../models/Atividade.js';
+import Atividade, { etapasMissao } from '../models/Atividade.js';
 import Historia from '../models/Historia.js';
 import Professor from '../models/Professor.js';
 import Turma from '../models/Turma.js';
 
-const camposAtividadeEntrada = ['turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo', 'recompensaMoedas'];
+const camposAtividadeEntrada = [
+  'turma', 'titulo', 'ordem', 'historia', 'questoes', 'prazo',
+  'recompensaMoedas', 'missao', 'habilidadesBncc'
+];
+const codigoBnccValido = /^(?:EI0[1-3]|EF0[1-5])[A-Z]{2}\d{2}$/;
 
 function recompensaValida(valor) {
   return Number.isSafeInteger(valor) && valor >= 1;
@@ -23,20 +27,52 @@ function prazoDeEntradaValido(prazo) {
     (typeof prazo === 'string' && Number.isFinite(Date.parse(prazo)));
 }
 
+function missaoValida(missao) {
+  return ehObjeto(missao) &&
+    !temCampoDesconhecido(missao, ['etapas']) &&
+    Array.isArray(missao.etapas) &&
+    missao.etapas.every(etapa => etapasMissao.includes(etapa)) &&
+    new Set(missao.etapas).size === missao.etapas.length;
+}
+
+function habilidadesBnccValidas(habilidades) {
+  if (!Array.isArray(habilidades)) return false;
+  const codigos = new Set();
+  for (const habilidade of habilidades) {
+    if (
+      !ehObjeto(habilidade) ||
+      temCampoDesconhecido(habilidade, ['codigo', 'texto', 'etapa']) ||
+      typeof habilidade.codigo !== 'string' ||
+      !codigoBnccValido.test(habilidade.codigo) ||
+      typeof habilidade.texto !== 'string' ||
+      !habilidade.texto.trim() ||
+      !['EI', 'EF'].includes(habilidade.etapa) ||
+      !habilidade.codigo.startsWith(habilidade.etapa) ||
+      codigos.has(habilidade.codigo)
+    ) return false;
+    codigos.add(habilidade.codigo);
+  }
+  return true;
+}
+
 function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {}) {
   if (!ehObjeto(body.historia) || temCampoDesconhecido(body.historia, ['tipo', 'historiaId', 'texto'])) {
     return false;
   }
 
+  if (Object.hasOwn(body, 'missao') && !missaoValida(body.missao)) return false;
+  if (Object.hasOwn(body, 'habilidadesBncc') && !habilidadesBnccValidas(body.habilidadesBncc)) return false;
   if (Object.hasOwn(body, 'questoes') && !Array.isArray(body.questoes)) return false;
 
   for (const questao of body.questoes ?? []) {
     const camposQuestao = permitirIdsSubdocumentos
-      ? ['_id', 'enunciado', 'alternativas', 'respostasCorretas']
-      : ['enunciado', 'alternativas', 'respostasCorretas'];
+      ? ['_id', 'tipo', 'enunciado', 'pontos', 'alternativas', 'respostasCorretas']
+      : ['tipo', 'enunciado', 'pontos', 'alternativas', 'respostasCorretas'];
     if (!ehObjeto(questao) || temCampoDesconhecido(questao, camposQuestao)) return false;
 
     if (Object.hasOwn(questao, '_id') && !mongoose.isValidObjectId(questao._id)) return false;
+    if (Object.hasOwn(questao, 'tipo') && questao.tipo !== 'multipla_escolha') return false;
+    if (Object.hasOwn(questao, 'pontos') && (!Number.isSafeInteger(questao.pontos) || questao.pontos < 0)) return false;
     if (Object.hasOwn(questao, 'alternativas') && !Array.isArray(questao.alternativas)) return false;
 
     for (const alternativa of questao.alternativas ?? []) {
@@ -55,7 +91,10 @@ function validarCamposAninhados(body, { permitirIdsSubdocumentos = false } = {})
 
 function validarCorpoEdicao(body) {
   return ehObjeto(body) &&
-    !temCampoDesconhecido(body, ['titulo', 'ordem', 'historia', 'questoes', 'prazo', 'recompensaMoedas']) &&
+    !temCampoDesconhecido(body, [
+      'titulo', 'ordem', 'historia', 'questoes', 'prazo', 'recompensaMoedas',
+      'missao', 'habilidadesBncc'
+    ]) &&
     typeof body.titulo === 'string' &&
     Boolean(body.titulo.trim()) &&
     (body.ordem === undefined || (typeof body.ordem === 'number' && Number.isInteger(body.ordem) && body.ordem >= 1)) &&
@@ -171,6 +210,8 @@ async function criar({ body, professorId }) {
     titulo: body.titulo,
     ordem: body.ordem !== undefined ? body.ordem : 1,
     historia: body.historia,
+    missao: body.missao,
+    habilidadesBncc: body.habilidadesBncc,
     questoes: body.questoes,
     status: 'rascunho',
     prazo: body.prazo ?? null
@@ -230,6 +271,29 @@ async function listarPublicadas(professorId) {
       typeof atividade.toObject === 'function' ? atividade.toObject() : atividade
     ))
   };
+}
+
+async function listarDoProfessor(professorId) {
+  if (!mongoose.isValidObjectId(professorId)) return { erro: 'professor-nao-encontrado' };
+
+  const atividades = await Atividade.find({ professorCriador: professorId })
+    .select({ 'questoes.respostasCorretas': 0 })
+    .sort({ updatedAt: -1, _id: -1 });
+
+  return {
+    atividades: atividades.map(atividade => removerRespostasCorretas(
+      typeof atividade.toObject === 'function' ? atividade.toObject() : atividade
+    ))
+  };
+}
+
+async function consultar({ atividadeId, professorId }) {
+  if (!mongoose.isValidObjectId(atividadeId)) return { erro: 'atividade-id-invalido' };
+
+  const atividade = await Atividade.findById(atividadeId);
+  if (!atividade) return { erro: 'atividade-nao-encontrada' };
+  if (String(atividade.professorCriador) !== String(professorId)) return { erro: 'somente-autor-consulta' };
+  return { atividade };
 }
 
 async function publicar({ atividadeId, professorId, body }) {
@@ -347,7 +411,18 @@ async function atualizar({ atividadeId, professorId, body }) {
   atividade.historia = body.historia;
   atividade.prazo = body.prazo ?? null;
   if (body.recompensaMoedas !== undefined) atividade.recompensaMoedas = body.recompensaMoedas;
-  atividade.questoes = body.questoes.map(questao => ({ ...questao, respostasCorretas: [] }));
+  if (Object.hasOwn(body, 'missao')) atividade.missao = body.missao;
+  if (Object.hasOwn(body, 'habilidadesBncc')) atividade.habilidadesBncc = body.habilidadesBncc;
+  const questoesExistentes = atividade.questoes;
+  atividade.questoes = body.questoes.map(questao => {
+    const existente = questao._id ? questoesExistentes.id(questao._id) : null;
+    return {
+      ...questao,
+      tipo: questao.tipo ?? existente?.tipo ?? 'multipla_escolha',
+      pontos: questao.pontos ?? existente?.pontos ?? 0,
+      respostasCorretas: []
+    };
+  });
   if (!aplicarRespostasPorIndice(atividade, body.questoes)) return { erro: 'indice-resposta-invalido' };
 
   for (const [indiceQuestao, questaoEntrada] of body.questoes.entries()) {
@@ -370,4 +445,4 @@ async function atualizar({ atividadeId, professorId, body }) {
   return { atividade };
 }
 
-export default { criar, listarPublicadas, publicar, excluir, atualizar };
+export default { criar, listarDoProfessor, listarPublicadas, consultar, publicar, excluir, atualizar };

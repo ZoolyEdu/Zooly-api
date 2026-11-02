@@ -5,6 +5,14 @@ import Escola from '../models/Escola.js';
 import Professor from '../models/Professor.js';
 import Turma from '../models/Turma.js';
 
+const periodosPermitidos = ['Manhã', 'Tarde'];
+const mascotesPermitidos = ['papagaio', 'lagarto', 'cobra', 'sarue'];
+
+function camposComplementaresValidos(body) {
+  return (!Object.hasOwn(body, 'periodo') || periodosPermitidos.includes(body.periodo)) &&
+    (!Object.hasOwn(body, 'mascote') || mascotesPermitidos.includes(body.mascote));
+}
+
 async function obterProfessor(professorId) {
   if (!mongoose.isValidObjectId(professorId)) return null;
   return Professor.findById(professorId).select('escolas');
@@ -21,7 +29,7 @@ function gerarCodigoPermanente() {
 }
 
 async function cadastrar({ body, professorId }) {
-  const { nome, escolaId, anoEscolar } = body;
+  const { nome, escolaId, anoEscolar, periodo, mascote } = body;
 
   if (
     typeof nome !== 'string' ||
@@ -32,6 +40,7 @@ async function cadastrar({ body, professorId }) {
     anoEscolar < 2000 ||
     anoEscolar > 2100
   ) return { erro: 'dados-invalidos' };
+  if (!camposComplementaresValidos(body)) return { erro: 'dados-complementares-invalidos' };
 
   const professor = await obterProfessor(professorId);
   if (!professor) return { erro: 'professor-nao-encontrado' };
@@ -51,7 +60,9 @@ async function cadastrar({ body, professorId }) {
         codigoPermanente,
         anoEscolar,
         escola: escola._id,
-        professorResponsavel: professor._id
+        professorResponsavel: professor._id,
+        ...(periodo !== undefined ? { periodo } : {}),
+        ...(mascote !== undefined ? { mascote } : {})
       });
       break;
     } catch (error) {
@@ -103,7 +114,9 @@ async function atualizar({ turmaId, professorId, body }) {
   if (!turma || turma.arquivada) return { erro: 'turma-nao-encontrada' };
   if (!professorTemAcesso(professor, turma)) return { erro: 'acesso-nao-autorizado' };
 
-  const { nome, anoEscolar } = body;
+  const { nome, anoEscolar, periodo, mascote } = body;
+
+  if (!camposComplementaresValidos(body)) return { erro: 'dados-complementares-invalidos' };
 
   if (Object.hasOwn(body, 'nome')) {
     if (typeof nome !== 'string' || !nome.trim()) return { erro: 'nome-invalido' };
@@ -116,6 +129,9 @@ async function atualizar({ turmaId, professorId, body }) {
     }
     turma.anoEscolar = anoEscolar;
   }
+
+  if (Object.hasOwn(body, 'periodo')) turma.periodo = periodo;
+  if (Object.hasOwn(body, 'mascote')) turma.mascote = mascote;
 
   await turma.save();
   return { turma };
