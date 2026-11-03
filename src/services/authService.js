@@ -168,4 +168,38 @@ async function entrarTurma(ra, codigoPermanente, senha) {
   return { aluno, alunoNovo, token };
 }
 
-export default { loginProfessor, loginAdmin, loginAluno, entrarTurma };
+// Primeiro acesso do aluno: cadastro sem senha, validado pelo codigo da turma.
+// Nao devolve token: para entrar, o aluno usa o RA e a senha de acesso da turma.
+async function cadastrarAluno({ ra, codigoPermanente, nomeCompleto, sexo }) {
+  const turma = await Turma.findOne({
+    codigoPermanente: codigoPermanente.trim().toUpperCase(),
+  }).select("+senhaAcessoHash");
+
+  if (!turma || turma.arquivada) return { erro: "turma-nao-encontrada" };
+  if (!turma.senhaAcessoHash) return { erro: "turma-sem-senha" };
+
+  if (await Aluno.exists({ ra: ra.trim() })) return { erro: "ra-ja-cadastrado" };
+
+  try {
+    const aluno = await Aluno.create({
+      ra: ra.trim(),
+      nomeCompleto: nomeCompleto.trim(),
+      sexo,
+      turma: turma._id,
+      cadastroInicialConcluido: true,
+    });
+    return { aluno };
+  } catch (erro) {
+    // Dois cadastros simultaneos com o mesmo RA: o indice unico barra o segundo.
+    if (erro.code === 11000) return { erro: "ra-ja-cadastrado" };
+    throw erro;
+  }
+}
+
+export default {
+  loginProfessor,
+  loginAdmin,
+  loginAluno,
+  entrarTurma,
+  cadastrarAluno,
+};
