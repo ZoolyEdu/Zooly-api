@@ -1,66 +1,77 @@
 # Zooly API
 
 <p align="center">
-  API REST do Zooly Game — Tecnologia assistiva para auxiliar no tratamento e prevenção do Transtorno Fonológico
+  <strong>API REST do Zooly — Tecnologia assistiva para auxiliar no tratamento e na prevenção do Transtorno Fonológico.</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-Backend-339933?logo=node.js&logoColor=white" alt="Node.js" />
   <img src="https://img.shields.io/badge/Express.js-API-000000?logo=express&logoColor=white" alt="Express.js" />
-  <img src="https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb&logoColor=white" alt="MongoDB Atlas" />
+  <img src="https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb" alt="MongoDB Atlas" />
   <img src="https://img.shields.io/badge/JavaScript-ES_Modules-F7DF1E?logo=javascript&logoColor=black" alt="JavaScript" />
 </p>
 
-## Descrição
+## Sobre o projeto
 
-A Zooly API é o backend responsável por centralizar as regras de negócio, a autenticação, as operações sobre os dados e os recursos utilizados pelas interfaces do Zooly.
+A Zooly API é o backend responsável por centralizar as regras de negócio, a autenticação, o gerenciamento de dados e os recursos utilizados pelas aplicações do Zooly.
 
-A API atende duas interfaces:
+O projeto foi desenvolvido para atender duas interfaces:
 
-- **Zooly Web:** sistema de gerenciamento utilizado por professores e administradores.
-- **Zooly Game:** interface Mobile Web utilizada pelas crianças.
+- **Zooly Web:** painel de gerenciamento utilizado por professores e administradores.
+- **Zooly Game:** aplicação Mobile Web destinada às crianças, com atividades educativas e recursos de gamificação.
 
-A comunicação entre as interfaces e o backend ocorre por meio de endpoints HTTP, com respostas em JSON.
+A comunicação entre as aplicações e o backend acontece por meio de requisições HTTP, com respostas no formato JSON.
 
-## Tecnologias e bibliotecas
+## Aplicações e links oficiais
 
-O projeto utiliza as seguintes tecnologias e bibliotecas:
+| Aplicação | Endereço |
+|---|---|
+| Zooly API | https://zooly-api.onrender.com |
+| Zooly Web | https://zooly-web.vercel.app |
+| Zooly Game | https://zooly-game.vercel.app |
+
+## Tecnologias utilizadas
 
 | Tecnologia ou biblioteca | Finalidade |
 |---|---|
 | Node.js | Ambiente de execução JavaScript no servidor. |
-| Express | Framework para criação do servidor HTTP e das rotas da API. |
-| MongoDB Atlas | Banco de dados utilizado pela aplicação. |
+| Express.js | Framework para criação do servidor HTTP e das rotas. |
+| MongoDB Atlas | Banco de dados da aplicação. |
 | Mongoose | Modelagem, validação e acesso aos documentos MongoDB. |
-| JavaScript ES Modules | Linguagem e sistema de módulos utilizados no projeto. |
-| bcryptjs | Hash e comparação de senhas. |
+| JavaScript ES Modules | Linguagem e sistema de módulos. |
+| bcryptjs | Criptografia e comparação de senhas por hash. |
 | jsonwebtoken | Geração e verificação de tokens JWT. |
-| cors | Configuração do compartilhamento de requisições entre origens. |
-| dotenv | Carregamento das variáveis de ambiente. |
+| cors | Configuração de acesso entre diferentes origens. |
+| dotenv | Gerenciamento das variáveis de ambiente. |
 | PDFKit | Geração de relatórios em PDF. |
 | nodemon | Reinicialização automática do servidor durante o desenvolvimento. |
-| Node.js Test Runner | Execução dos testes automatizados com `node:test`. |
-| mongodb-memory-server | MongoDB em memória (replica set) para os testes de integração. |
+| Node.js Test Runner | Execução dos testes automatizados. |
+| mongodb-memory-server | Banco MongoDB em memória para testes de integração. |
 
-As dependências de execução estão declaradas em `dependencies` no `package.json`. O `nodemon` e o `mongodb-memory-server` estão declarados em `devDependencies`.
+As dependências de execução estão declaradas em `dependencies` no `package.json`. As ferramentas de desenvolvimento e testes estão em `devDependencies`.
 
 ## Funcionalidades
 
 - Autenticação e autorização de administradores, professores e alunos.
-- Gerenciamento de escolas, professores, turmas e alunos.
+- Cadastro e gerenciamento de professores.
+- Gerenciamento de escolas.
+- Cadastro e gerenciamento de turmas.
+- Cadastro, edição e gerenciamento de alunos.
+- Primeiro acesso de alunos sem necessidade de senha individual.
 - Cadastro, edição, publicação e consulta de atividades educativas.
-- Banco de Histórias: seis histórias iniciais do Zooly, com 30 perguntas, e histórias próprias dos professores, reutilizáveis em atividades.
+- Banco de Histórias com histórias iniciais do Zooly e histórias próprias dos professores.
 - Registro de respostas e acompanhamento do progresso dos alunos.
-- Histórico de tentativas: cada vez que a missão é jogada fica registrada, e só a primeira conclusão vale para o desempenho e as moedas.
+- Histórico de tentativas das atividades.
 - Desbloqueio sequencial de atividades.
-- Sistema de moedas, gastos, compras e seleção de avatares.
+- Sistema de moedas e movimentações.
+- Loja de avatares e gerenciamento de compras.
 - Consulta de desempenho individual e por turma.
 - Geração de relatórios semanais de desempenho em PDF.
 - Consulta de conteúdos da Base Nacional Comum Curricular (BNCC).
 
-## Arquitetura
+## Arquitetura do projeto
 
-A aplicação segue uma organização em camadas que separa as responsabilidades do backend.
+A aplicação segue uma organização em camadas, separando as responsabilidades do backend.
 
 ```text
 src/
@@ -79,11 +90,11 @@ src/
 
 - **Routes:** registram os endpoints e aplicam os middlewares.
 - **Controllers:** recebem as requisições, chamam os services e organizam as respostas HTTP.
-- **Services:** concentram as regras de negócio, consultas e operações da aplicação.
-- **Models:** definem os documentos, schemas, validações e índices do Mongoose.
+- **Services:** concentram as regras de negócio e operações da aplicação.
+- **Models:** definem documentos, schemas, validações e índices do Mongoose.
 - **Middlewares:** implementam verificações compartilhadas, como autenticação e autorização.
 - **Config:** reúne configurações da aplicação, incluindo a conexão com o banco de dados.
-- **Utils:** funções pequenas usadas por várias camadas (`erros.js`: resposta de erro, erro com status HTTP e detecção de MongoDB sem transações).
+- **Utils:** contém funções auxiliares utilizadas por diferentes camadas.
 
 O arquivo `app.js` configura o Express e registra as rotas e os middlewares globais. O arquivo `server.js` inicializa o servidor.
 
@@ -91,16 +102,21 @@ O arquivo `app.js` configura o Express e registra as rotas e os middlewares glob
 
 ### Pré-requisitos
 
-- Node.js em uma versão compatível com as dependências do projeto.
+- Node.js em versão compatível com as dependências do projeto.
 - npm.
 - Acesso a uma instância MongoDB configurada para o Zooly.
 
 ### Instalação
 
-Clone o repositório e acesse a pasta do projeto:
+Clone o repositório:
 
 ```bash
-git clone https://github.com/ZoolyEdu/Zooly-api.git
+git clone https://github.com/ZoolyEduc/Zooly-api.git
+```
+
+Entre na pasta:
+
+```bash
 cd Zooly-api
 ```
 
@@ -110,39 +126,48 @@ Instale as dependências:
 npm install
 ```
 
-### Configuração das variáveis de ambiente
+### Variáveis de ambiente
 
-O projeto possui um arquivo `.env.example` que serve como modelo para configurar o ambiente local.
+O projeto possui um arquivo `.env.example`, utilizado como modelo para a configuração do ambiente local.
 
-Copie o arquivo `.env.example` para `.env`, preservando o arquivo de exemplo para futuras configurações.
+Crie seu arquivo `.env` a partir dele.
 
-No Windows, você pode executar:
+No Windows:
 
 ```cmd
 copy .env.example .env
 ```
 
-Depois, abra o arquivo `.env` e configure os valores necessários para seu ambiente.
+No Linux ou macOS:
+
+```bash
+cp .env.example .env
+```
+
+Configure os valores necessários no arquivo `.env`:
 
 | Variável | Finalidade |
 |---|---|
 | `MONGODB_URI` | String de conexão com o MongoDB. |
 | `PORT` | Porta utilizada pelo servidor. |
 | `JWT_SECRET` | Segredo utilizado para assinar e verificar os tokens JWT. |
-| `MONGODB_DB_NAME` | Nome do banco. O padrão é `zooly`. |
-| `CORS_ORIGINS` | Origens de navegador permitidas, separadas por vírgula. Veja [docs/cors.md](./docs/cors.md). |
-| `ZOOLY_AMBIENTE` | **Não use.** O modo demonstração foi removido: a API recusa iniciar se essa variável estiver definida ou se o banco for `zooly_demo`. |
-| `JWT_EXPIRES_IN` | Validade dos tokens de professor e administrador. O padrão é 1h; em uso, 8h. |
-| `JWT_EXPIRES_IN_ALUNO` | Validade dos tokens de aluno. O padrão é 2h. |
+| `MONGODB_DB_NAME` | Nome do banco de dados. O padrão é `zooly`. |
+| `CORS_ORIGINS` | Origens permitidas para requisições do navegador, separadas por vírgula. |
+| `JWT_EXPIRES_IN` | Validade dos tokens de professores e administradores. |
+| `JWT_EXPIRES_IN_ALUNO` | Validade dos tokens de alunos. |
 | `ADMIN_EMAIL` | E-mail da conta administrativa configurada. |
 | `ADMIN_SENHA_HASH` | Hash da senha da conta administrativa. |
-| `MOEDAS_RECOMPENSA_CONCLUSAO` | Quantidade de moedas concedidas pela conclusão de uma atividade. É opcional; quando não configurada, a aplicação utiliza o valor padrão de 10 moedas. |
+| `MOEDAS_RECOMPENSA_CONCLUSAO` | Quantidade de moedas concedidas pela conclusão de uma atividade. |
 
-Ajuste os valores conforme o ambiente local. Não publique o arquivo `.env`, senhas, strings de conexão ou segredos no repositório. Mantenha credenciais reais fora do `.env.example`.
+O modo de demonstração foi removido. Não configure `ZOOLY_AMBIENTE` e não utilize o banco `zooly_demo`, pois a API recusa essas configurações.
+
+**Importante:** nunca publique o arquivo `.env`, senhas, strings de conexão ou segredos no repositório. Mantenha credenciais reais fora dos arquivos de exemplo.
+
+A configuração de CORS está documentada em [docs/cors.md](./docs/cors.md).
 
 ### Executando a aplicação
 
-Para iniciar o servidor em modo de desenvolvimento, com reinicialização automática:
+Para iniciar o servidor em modo de desenvolvimento:
 
 ```bash
 npm run dev
@@ -154,135 +179,203 @@ Para iniciar o servidor normalmente:
 npm start
 ```
 
-Os comandos correspondem aos scripts definidos no `package.json`.
+A API ficará disponível na porta definida pela variável `PORT`.
 
 ## Executando os testes
 
-A API utiliza o test runner nativo do Node.js para executar os testes automatizados.
+O projeto utiliza o test runner nativo do Node.js para executar os testes automatizados.
 
-Para executar a suíte completa:
+Execute a suíte completa:
 
 ```bash
 npm test
 ```
 
-A suíte cobre autenticação, autorização, validações, operações de negócio, progresso, tentativas, moedas, loja, desempenho, relatórios e outros comportamentos da API.
+**Último resultado registrado: 322 testes aprovados.**
 
-Grande parte dos testes de rotas utiliza mocks dos models. As exceções são `test/tentativas.test.js` e `test/bancoHistorias.test.js`, testes de **integração**: eles sobem um MongoDB em memória em replica set (`mongodb-memory-server`) e exercita a API HTTP completa, com índices únicos e transações reais. Nenhum banco externo é usado. Na primeira execução, o binário do MongoDB (cerca de 100 MB) é baixado e fica em cache.
+A suíte contempla testes de autenticação, autorização, validações, operações de negócio, progresso, tentativas, moedas, loja, desempenho, relatórios e outros comportamentos da API.
 
-## Principais endpoints da API
+Grande parte dos testes de rotas utiliza mocks dos models. Os testes de integração `test/tentativas.test.js` e `test/bancoHistorias.test.js` utilizam um MongoDB em memória por meio do `mongodb-memory-server`, sem conexão com banco externo.
 
-Os recursos estão organizados pelos seguintes prefixos:
+Na primeira execução, o binário do MongoDB pode ser baixado automaticamente e armazenado em cache.
+
+## Principais endpoints
+
+Os recursos da API estão organizados pelos seguintes prefixos:
 
 | Prefixo | Recurso |
 |---|---|
 | `/api/auth` | Autenticação e entrada de usuários. |
-| `/api/professores` | Cadastro público de professores e perfil do professor autenticado (`GET /me`). |
+| `/api/professores` | Cadastro e perfil de professores. |
 | `/api/admin/professores` | Gerenciamento administrativo de professores. |
 | `/api/escolas` | Gerenciamento administrativo de escolas. |
-| `/api/turmas` | Gerenciamento de turmas, restrito ao professor responsável. |
-| `/api/alunos` | Gerenciamento de alunos, restrito ao professor responsável pela turma, e avatares. |
-| `/api/historias` | Banco de Histórias: consulta, cadastro e reaproveitamento em atividades (somente professores). |
+| `/api/turmas` | Gerenciamento de turmas. |
+| `/api/alunos` | Gerenciamento de alunos e avatares. |
+| `/api/historias` | Banco de Histórias. |
 | `/api/atividades` | Criação, edição, publicação e consulta de atividades. |
 | `/api/progresso` | Registro de respostas e acompanhamento do progresso. |
 | `/api/moedas` | Saldo e movimentações de moedas. |
 | `/api/loja` | Catálogo e compra de avatares. |
-| `/api/desempenho` | Indicadores de desempenho e relatórios. |
+| `/api/desempenho` | Indicadores e relatórios de desempenho. |
 | `/api/bncc` | Consulta de conteúdos da BNCC. |
 
-Os endpoints protegidos exigem autenticação e o perfil autorizado para a operação. Os requisitos específicos são definidos pelos middlewares e pelas rotas correspondentes.
+Os endpoints protegidos exigem autenticação e o perfil autorizado para a operação. As permissões específicas são definidas pelas rotas e pelos middlewares correspondentes.
+
+## Autenticação e primeiro acesso dos alunos
+
+A API possui fluxos de autenticação para administradores, professores e alunos.
+
+### Cadastro inicial do aluno
+
+O primeiro acesso do aluno pode ser realizado sem uma senha individual.
+
+O fluxo utiliza o endpoint:
+
+```http
+POST /api/auth/aluno/cadastro
+```
+
+O aluno informa:
+
+- Nome;
+- RA;
+- Sexo;
+- Código da turma.
+
+A API valida os dados recebidos, verifica se a turma existe, se não está arquivada e se possui uma senha de acesso configurada.
+
+Após o cadastro:
+
+1. A API registra o aluno.
+2. Não retorna um token de autenticação nesse momento.
+3. O aluno é direcionado para a tela de login.
+4. O RA fica preenchido para facilitar a entrada.
+5. O aluno utiliza a senha de acesso da turma para realizar o login.
+
+### Alunos cadastrados pelo professor
+
+Quando o professor cadastra um aluno pelo painel, o aluno pode realizar o primeiro login utilizando o RA e a senha da turma.
+
+Caso ainda possua um cadastro inicial pendente, deverá completar seus dados por meio de:
+
+```http
+PATCH /api/alunos/cadastro-inicial
+```
+
+Depois da conclusão do cadastro, o aluno pode seguir para a introdução guiada do jogo.
+
+### Login do aluno
+
+```http
+POST /api/auth/aluno/login
+```
+
+A autenticação valida o RA e a senha de acesso da turma, respeitando as regras de cadastro e acesso do aluno.
+
+As senhas não devem ser armazenadas em texto puro.
 
 ## Tentativas de atividade
 
-Cada vez que o aluno joga uma atividade, a API cria uma `TentativaAtividade`. Os detalhes completos estão em [docs/tentativas.md](./docs/tentativas.md).
+Cada vez que o aluno joga uma atividade, a API cria um registro de `TentativaAtividade`.
 
-**Regras:**
-- `POST /api/progresso/atividades/:id/iniciar` retoma a tentativa em andamento ou abre a próxima. Só pode haver uma em andamento, garantido por índice único parcial.
-- `PUT .../respostas` grava só na tentativa em andamento. Tentativas concluídas não mudam (`409`).
-- `PATCH .../concluir`:
-  - a **primeira** tentativa concluída é a **oficial**: conclui o progresso, congela as respostas nele e concede as moedas, tudo na mesma transação;
-  - as repetições ficam no histórico, sem moedas (`movimentacao: null`) e sem alterar o desempenho.
-- O desempenho, o relatório semanal e o PDF continuam lendo o progresso, que guarda a tentativa oficial.
+A documentação completa está em [docs/tentativas.md](./docs/tentativas.md).
 
-**Novos endpoints:**
+### Regras principais
+
+- `POST /api/progresso/atividades/:id/iniciar`: retoma uma tentativa em andamento ou abre uma nova.
+- `PUT /api/progresso/atividades/:id/respostas`: registra as respostas da tentativa em andamento.
+- `PATCH /api/progresso/atividades/:id/concluir`: conclui a tentativa.
+
+A primeira tentativa concluída é considerada oficial:
+
+- Atualiza o progresso do aluno.
+- Registra as respostas oficiais.
+- Concede as moedas de recompensa.
+- É utilizada nos indicadores de desempenho.
+
+As tentativas seguintes continuam registradas no histórico, mas não concedem novas moedas nem alteram o desempenho oficial.
+
+### Histórico de tentativas
 
 | Endpoint | Perfil | Descrição |
 |---|---|---|
-| `GET /api/progresso/atividades/:atividadeId/tentativas` | aluno | Histórico do próprio aluno, sem gabarito. |
-| `GET /api/desempenho/alunos/:alunoId/tentativas?atividadeId=` | professor responsável pela turma | Histórico com correção por questão. |
+| `GET /api/progresso/atividades/:atividadeId/tentativas` | Aluno | Consulta o histórico do próprio aluno, sem acesso ao gabarito. |
+| `GET /api/desempenho/alunos/:alunoId/tentativas?atividadeId=` | Professor responsável | Consulta o histórico com correção por questão. |
 
-**Compatibilidade:** os endpoints existentes mantêm caminhos, corpos e campos. Só ganham `tentativa`, `tentativaRetomada` e `progresso.tentativaOficial`.
+Os endpoints anteriores de progresso mantêm seus contratos, com os campos adicionais relacionados às tentativas.
 
 ### Migração do histórico
 
-Os progressos anteriores viram a tentativa 1 (oficial, se concluídos) com `scripts/migrarTentativas.js`. O script:
-- simula por padrão;
-- exige confirmar o nome do banco para gravar;
-- é idempotente;
-- valida o resultado;
-- pode ser revertido;
-- não altera nem apaga os dados originais.
+Os progressos anteriores podem ser convertidos em tentativas utilizando o script `scripts/migrarTentativas.js`.
+
+O script possui modo de simulação por padrão, exige confirmação do banco para gravação, valida o resultado e permite reversão.
+
+Comandos:
 
 ```bash
-npm run migrar:tentativas                                        # simulação (somente leitura)
-npm run migrar:tentativas -- --apply --banco=<MONGODB_DB_NAME>   # aplicar e validar
-npm run migrar:tentativas -- --reverter [--apply --banco=<nome>] # desfazer
+# Simulação, sem gravar alterações
+npm run migrar:tentativas
+
+# Aplicar a migração
+npm run migrar:tentativas -- --apply --banco=<MONGODB_DB_NAME>
+
+# Reverter a migração
+npm run migrar:tentativas -- --reverter
 ```
 
-Faça backup antes de aplicar. Enquanto a migração não roda, a API adota automaticamente cada progresso antigo como tentativa 1 na primeira vez que o aluno volta à atividade.
+**Atenção:** faça um backup do banco antes de aplicar qualquer migração. Não execute esse procedimento diretamente em produção sem validar o ambiente e os dados.
 
 ## Banco de Histórias
 
-Os professores escolhem histórias prontas do Zooly ou cadastram as próprias, com perguntas, e as reutilizam em atividades. A documentação completa está em [docs/historias.md](./docs/historias.md).
+O Banco de Histórias permite que os professores utilizem histórias disponibilizadas pelo Zooly ou cadastrem suas próprias histórias para reutilização em atividades.
 
-- **Seis histórias iniciais** do Zooly (5 perguntas cada, 4 alternativas, feedback e objetivo pedagógico). São adaptações infantis inspiradas no folclore e na cultura do Vale do Ribeira, globais e protegidas: nenhum professor pode alterá-las.
-- **Histórias próprias:** o professor cadastra, edita, arquiva, reativa e exclui as suas. Elas são visíveis só para o autor, identificado pelo token.
-- **Atividades:** `GET /api/historias/:id/modelo-atividade` devolve o conteúdo pronto para o formulário de atividade. A atividade salva uma **cópia independente** do texto e das perguntas, então editar ou excluir a história depois não altera a atividade.
-- **Gabarito:** o banco é exclusivo de professores, e o aluno continua recebendo só o conteúdo sem respostas.
+A documentação completa está em [docs/historias.md](./docs/historias.md).
 
-Cadastro das histórias iniciais (idempotente, nunca sobrescreve):
+### Histórias iniciais
+
+O projeto possui seis histórias iniciais do Zooly, com cinco perguntas cada, quatro alternativas, feedback e objetivo pedagógico.
+
+São adaptações infantis inspiradas no folclore e na cultura do Vale do Ribeira. Essas histórias são protegidas e não podem ser alteradas pelos professores.
+
+### Histórias próprias
+
+Os professores podem cadastrar, editar, arquivar, reativar e excluir suas próprias histórias.
+
+Cada história própria é vinculada ao professor responsável e fica disponível somente para seu autor.
+
+### Integração com atividades
+
+O endpoint abaixo disponibiliza o conteúdo de uma história para utilização no formulário de criação de atividades:
+
+```http
+GET /api/historias/:id/modelo-atividade
+```
+
+A atividade salva uma cópia independente do texto e das perguntas. Assim, alterações ou exclusões posteriores da história original não modificam a atividade já criada.
+
+O Banco de Histórias é exclusivo dos professores. Os alunos recebem somente o conteúdo necessário para realizar as atividades, sem acesso às respostas corretas.
+
+### Cadastro das histórias iniciais
+
+O script de cadastro é idempotente e não sobrescreve histórias existentes.
 
 ```bash
-npm run historias:semear                                       # simulação (somente leitura)
-npm run historias:semear -- --apply --banco=<MONGODB_DB_NAME>  # grava as que faltarem
-```
+# Simulação
+npm run historias:semear
 
-## Documentação
-
-- [Banco de Histórias](./docs/historias.md): modelos, endpoints, autorização, perguntas, seed e integração com atividades.
-- [Tentativas de atividade](./docs/tentativas.md): modelo, regras, endpoints, compatibilidade, migração e testes.
-- [Atividades](./docs/atividades.md): rotas do professor, origem da história, missão, BNCC e pontuação.
-- [CORS](./docs/cors.md): configuração de `CORS_ORIGINS`.
-
-## Relatório semanal de desempenho
-
-Professores autorizados podem consultar o endpoint:
-
-```http
-GET /api/desempenho/turmas/:turmaId/semanal?data=AAAA-MM-DD
-```
-
-A data informada seleciona a semana de segunda-feira a segunda-feira, com limite final exclusivo, considerando o fuso `America/Sao_Paulo`. Os campos `periodo.inicio` e `periodo.fim` são instantes UTC.
-
-O campo `periodo.disponivel` indica se o período já terminou.
-
-O relatório inclui todos os alunos da turma, inclusive aqueles sem registros. Os indicadores consideram:
-
-- Inícios por `iniciadaEm`.
-- Conclusões por `concluidaEm`.
-- Respostas pela data da última submissão, registrada em `respostasRegistradasEm`. Depois da primeira conclusão, essa data é a da tentativa oficial e não muda quando a missão é repetida.
-
-Progresso legado com respostas, mas sem essa data, é identificado em `respostasSemData` e não é atribuído a uma semana. O percentual de acerto é `null` quando não há respostas datadas no período.
-
-A exportação do relatório em PDF está disponível em:
-
-```http
-GET /api/desempenho/turmas/:turmaId/semanal/pdf
+# Aplicar o cadastro
+npm run historias:semear -- --apply --banco=<MONGODB_DB_NAME>
 ```
 
 ## Criação de atividades
 
-Para criar uma atividade, envie `POST /api/atividades` utilizando um token de professor responsável pela turma.
+Para criar uma atividade, utilize:
+
+```http
+POST /api/atividades
+```
+
+A operação exige um token de professor autorizado para a turma.
 
 Exemplo de corpo JSON:
 
@@ -317,7 +410,7 @@ Exemplo de corpo JSON:
 
 Cada alternativa deve possuir um `_id` válido, e `respostasCorretas` deve referenciar os IDs das alternativas corretas da respectiva questão.
 
-A história pode ser oficial ou própria. Para texto próprio, utilize:
+A história pode ser oficial ou própria. Para utilizar um texto próprio:
 
 ```json
 {
@@ -326,23 +419,23 @@ A história pode ser oficial ou própria. Para texto próprio, utilize:
 }
 ```
 
-A origem deve ser uma história do Banco de Histórias que o professor possa usar (do Zooly ou dele mesmo, ativa) ou um texto próprio válido. O status inicial `rascunho` é definido pelo servidor.
+A origem deve ser uma história do Banco de Histórias que o professor tenha autorização para utilizar ou um texto próprio válido.
 
-Em qualquer caso, a atividade guarda uma **cópia** da história:
-- com `tipo: "oficial"`, o servidor copia título e texto para `historia.tituloCopia` e `historia.textoCopia`;
-- com texto próprio vindo do banco (`GET /api/historias/:id/modelo-atividade`), o texto fica em `historia.texto` e `historia.bancoHistoriaId` registra a origem.
+O status inicial `rascunho` é definido pelo servidor.
 
-Editar a história no banco depois não altera a atividade. Detalhes em [docs/historias.md](./docs/historias.md#integração-com-atividades).
+A atividade armazena uma cópia da história, preservando seu conteúdo mesmo que a história original seja alterada posteriormente.
 
 ### Edição de atividades
 
-A edição completa é realizada por `PUT /api/atividades/:id`.
+A edição completa é realizada por:
 
-Mantenha os IDs das questões e alternativas existentes que deseja preservar. Esses IDs só podem ser reutilizados dentro da atividade e da questão a que já pertencem.
+```http
+PUT /api/atividades/:id
+```
 
-Para questões ou alternativas novas, omita `_id`. Quando forem enviadas novas alternativas, `respostasCorretas` pode utilizar índices começando em zero para identificar as alternativas corretas nesse envio.
+Mantenha os IDs das questões e alternativas existentes que deseja preservar. Para questões ou alternativas novas, omita o campo `_id`.
 
-### Publicação e exclusão de atividades
+### Publicação de atividades
 
 O professor criador pode publicar um rascunho utilizando:
 
@@ -350,26 +443,98 @@ O professor criador pode publicar um rascunho utilizando:
 PATCH /api/atividades/:id/publicar
 ```
 
-A API define `status: "publicada"` e registra `publicadoEm`. Uma atividade já publicada não pode ser publicada novamente.
+A API define o status como `publicada` e registra a data de publicação.
 
-O campo opcional `prazo` aceita uma data válida e não bloqueia o acesso quando vencido.
+Uma atividade já publicada não pode ser publicada novamente.
 
-`GET /api/atividades/publicadas` lista as atividades da mais antiga para a mais recente, usando `_id` como desempate.
+O campo opcional `prazo` aceita uma data válida, mas não bloqueia automaticamente o acesso quando vencido.
 
-`DELETE /api/atividades/:id` permite excluir somente atividades sem registros de outros models que as referenciem. A exceção são os registros dos alunos: progressos e tentativas são apagados junto com a atividade, e as movimentações de moedas perdem o vínculo, numa transação.
+### Exclusão de atividades
 
-Os contratos de rascunhos, detalhes protegidos, etapas da missão, habilidades BNCC, pontuação e campos de turma estão documentados em [docs/atividades.md](./docs/atividades.md).
+A exclusão é realizada por:
+
+```http
+DELETE /api/atividades/:id
+```
+
+A API verifica se existem registros relacionados à atividade antes de permitir sua exclusão.
+
+Os progressos, tentativas e movimentações de moedas relacionadas são tratados conforme as regras de exclusão e transação implementadas no backend.
+
+Mais detalhes estão disponíveis em [docs/atividades.md](./docs/atividades.md).
+
+## Relatório semanal de desempenho
+
+Professores autorizados podem consultar o relatório semanal de uma turma utilizando:
+
+```http
+GET /api/desempenho/turmas/:turmaId/semanal?data=AAAA-MM-DD
+```
+
+A data informada seleciona a semana de segunda-feira a segunda-feira, com limite final exclusivo, considerando o fuso `America/Sao_Paulo`.
+
+O relatório inclui todos os alunos da turma, inclusive aqueles sem registros.
+
+Os indicadores consideram:
+
+- Inícios de atividades;
+- Conclusões;
+- Respostas registradas;
+- Percentual de acertos.
+
+A exportação em PDF está disponível em:
+
+```http
+GET /api/desempenho/turmas/:turmaId/semanal/pdf
+```
+
+## Documentação complementar
+
+O projeto possui documentação técnica adicional na pasta `docs/`:
+
+| Arquivo | Conteúdo |
+|---|---|
+| [docs/historias.md](./docs/historias.md) | Banco de Histórias, modelos, endpoints, autorização e integração com atividades. |
+| [docs/tentativas.md](./docs/tentativas.md) | Modelo de tentativas, regras, endpoints, migração e testes. |
+| [docs/atividades.md](./docs/atividades.md) | Criação, edição, publicação, histórias, BNCC e pontuação. |
+| [docs/cors.md](./docs/cors.md) | Configuração de CORS e origens permitidas. |
+
+## Banco de dados e ambientes
+
+A aplicação utiliza o banco `zooly` por padrão, configurado explicitamente pela opção `dbName` do Mongoose.
+
+A variável `MONGODB_DB_NAME` permite substituir esse nome.
+
+Os testes automatizados não carregam o arquivo `.env` nem utilizam o banco de produção. Os testes de integração utilizam um MongoDB temporário em memória.
+
+Para testes de integração locais, utilize uma instância e credenciais isoladas, com um banco de testes, por exemplo `zooly_test`.
+
+**Nunca reutilize a URI de produção nos testes.**
+
+O modo de demonstração foi removido da API. O backend recusa o banco `zooly_demo` e a variável `ZOOLY_AMBIENTE`, evitando que dados fictícios sejam apresentados como dados reais.
+
+Os dados que ainda existam no banco antigo `zooly_demo` não são apagados automaticamente.
+
+## Deploy
+
+A API está publicada no Render:
+
+**Produção:** https://zooly-api.onrender.com
+
+O frontend Web e o Game estão publicados na Vercel e consomem a API por meio de suas respectivas configurações de ambiente.
+
+As origens autorizadas devem ser configuradas na variável `CORS_ORIGINS`.
 
 ## Status do projeto
 
-Projeto acadêmico em desenvolvimento no curso de Desenvolvimento de Software Multiplataforma (DSM), da FATEC Registro.
+O Zooly é um projeto acadêmico desenvolvido no curso de **Desenvolvimento de Software Multiplataforma (DSM)** da **FATEC Registro**.
 
 **Equipe:** KofiTech.
 
-### Banco de dados nos ambientes
+O projeto está em desenvolvimento contínuo, com evolução das funcionalidades, testes e melhorias na integração entre as aplicações.
 
-A aplicacao usa o banco `zooly` por padrao, configurado explicitamente pela opcao `dbName` do Mongoose. Defina `MONGODB_DB_NAME` para substituir esse nome; a opcao prevalece sobre o nome no caminho de `MONGODB_URI`.
+---
 
-Os testes automatizados nao carregam `.env` nem conectam a um MongoDB externo: os testes de integracao (`test/tentativas.test.js` e `test/bancoHistorias.test.js`) usam um MongoDB temporario em memoria. Para testes de integracao locais, use uma instancia e credenciais isoladas e defina `MONGODB_DB_NAME=zooly_test` junto de uma `MONGODB_URI` dessa instancia. Nunca reutilize a URI de producao.
-
-O modo demonstracao foi removido da API. A API recusa o banco `zooly_demo` e a variavel `ZOOLY_AMBIENTE`, para que dados ficticios nunca aparecam como reais. Os dados que ainda estejam no banco `zooly_demo` nao foram apagados.
+<p align="center">
+  Desenvolvido pela equipe KofiTech.
+</p>
