@@ -3,22 +3,12 @@ import Aluno from "../models/Aluno.js";
 import MovimentacaoMoeda from "../models/MovimentacaoMoeda.js";
 import ProgressoAtividade from "../models/ProgressoAtividade.js";
 import AvatarAluno from "../models/AvatarAluno.js";
-
-function erroMoedas(mensagem, status) {
-  const erro = new Error(mensagem);
-  erro.status = status;
-  return erro;
-}
-
-function erroTransacoesIndisponiveis(erro) {
-  return (
-    erro?.code === 20 ||
-    erro?.code === 303 ||
-    /transaction numbers are only allowed|replica set|transactions are not supported/i.test(
-      erro?.message ?? "",
-    )
-  );
-}
+import {
+  buscarUltimaTentativa,
+  concluirTentativaAberta,
+  copiarRespostas,
+} from "./tentativaService.js";
+import { erroHttp, transacoesIndisponiveis } from "../utils/erros.js";
 
 function obterRecompensaConclusao(recompensaAtividade) {
   if (recompensaAtividade !== undefined) {
@@ -55,14 +45,14 @@ async function comTransacaoDeAluno(alunoId, operacao) {
         { session: sessao },
       );
       if ((atualizacao.matchedCount ?? atualizacao.n) === 0) {
-        throw erroMoedas("Aluno não encontrado.", 404);
+        throw erroHttp("Aluno não encontrado.", 404);
       }
       resultado = await operacao(sessao);
     });
     return resultado;
   } catch (erro) {
-    if (erroTransacoesIndisponiveis(erro)) {
-      throw erroMoedas(
+    if (transacoesIndisponiveis(erro)) {
+      throw erroHttp(
         "As operações de moedas exigem MongoDB com suporte a transações.",
         503,
       );
@@ -95,7 +85,7 @@ async function calcularSaldoComSessao(alunoId, sessao) {
   const [resultado] = await agregacao;
   const saldo = resultado?.saldo ?? 0;
   if (!Number.isSafeInteger(saldo)) {
-    throw erroMoedas("O saldo excede o limite inteiro seguro suportado.", 503);
+    throw erroHttp("O saldo excede o limite inteiro seguro suportado.", 503);
   }
   return saldo;
 }
@@ -120,19 +110,19 @@ export function listarMovimentacoes({ alunoId, pagina, limite }) {
 
 export async function gastarMoedas({ alunoId, quantidade, motivo }) {
   if (!Number.isSafeInteger(quantidade) || quantidade < 1) {
-    throw erroMoedas("A quantidade deve ser um inteiro positivo.", 400);
+    throw erroHttp("A quantidade deve ser um inteiro positivo.", 400);
   }
   if (
     typeof motivo !== "string" ||
     motivo.trim().length < 3 ||
     motivo.trim().length > 120
   ) {
-    throw erroMoedas("Informe um motivo entre 3 e 120 caracteres.", 400);
+    throw erroHttp("Informe um motivo entre 3 e 120 caracteres.", 400);
   }
 
   return comTransacaoDeAluno(alunoId, async (sessao) => {
     const saldoAtual = await calcularSaldoComSessao(alunoId, sessao);
-    if (saldoAtual < quantidade) throw erroMoedas("Saldo insuficiente.", 409);
+    if (saldoAtual < quantidade) throw erroHttp("Saldo insuficiente.", 409);
 
     const [movimentacao] = await MovimentacaoMoeda.create(
       [
@@ -151,18 +141,18 @@ export async function gastarMoedas({ alunoId, quantidade, motivo }) {
 
 export async function comprarAvatar({ alunoId, avatarId, preco }) {
   if (typeof avatarId !== "string" || !avatarId.trim())
-    throw erroMoedas("Avatar inválido.", 400);
+    throw erroHttp("Avatar inválido.", 400);
   if (!Number.isSafeInteger(preco) || preco < 1)
-    throw erroMoedas("Preço do avatar inválido.", 400);
+    throw erroHttp("Preço do avatar inválido.", 400);
 
   return comTransacaoDeAluno(alunoId, async (sessao) => {
     let consulta = AvatarAluno.exists({ aluno: alunoId, avatarId });
     if (typeof consulta.session === "function")
       consulta = consulta.session(sessao);
-    if (await consulta) throw erroMoedas("Este avatar já foi adquirido.", 409);
+    if (await consulta) throw erroHttp("Este avatar já foi adquirido.", 409);
 
     const saldoAtual = await calcularSaldoComSessao(alunoId, sessao);
-    if (saldoAtual < preco) throw erroMoedas("Saldo insuficiente.", 409);
+    if (saldoAtual < preco) throw erroHttp("Saldo insuficiente.", 409);
 
     const [movimentacao] = await MovimentacaoMoeda.create(
       [
@@ -198,18 +188,33 @@ export async function concluirAtividadeComRecompensa({
       consulta = consulta.session(sessao);
     const progresso = await consulta;
     if (!progresso)
-      throw erroMoedas("O aluno ainda não iniciou esta atividade.", 404);
+      throw erroHttp("O aluno ainda não iniciou esta atividade.", 404);
 
-    if (progresso.status === "concluida") {
+    // A transação serializa as operações de moedas do aluno: duas conclusões simultâneas
+    // não enxergam a mesma tentativa aberta, e só a primeira conclusão vira oficial.
+    const { tentativa, primeiraConclusao } = await concluirTentativaAberta({
+      progresso,
+      sessao,
+    });
+
+    if (!primeiraConclusao) {
+      // Repetição da missão ou requisição repetida: nunca gera moedas.
       return {
         progresso,
+        tentativa:
+          tentativa ??
+          (await buscarUltimaTentativa(alunoId, atividadeId, sessao)),
         movimentacao: null,
         saldo: await calcularSaldoComSessao(alunoId, sessao),
       };
     }
 
+    // A tentativa oficial fica congelada no progresso, que é o que o desempenho lê.
     progresso.status = "concluida";
-    progresso.concluidaEm = new Date();
+    progresso.concluidaEm = tentativa.concluidaEm;
+    progresso.tentativaOficial = tentativa._id;
+    progresso.respostas = copiarRespostas(tentativa.respostas);
+    progresso.respostasRegistradasEm = tentativa.respostasRegistradasEm;
     await progresso.save({ session: sessao });
 
     const [movimentacao] = await MovimentacaoMoeda.create(
@@ -227,10 +232,9 @@ export async function concluirAtividadeComRecompensa({
 
     return {
       progresso,
+      tentativa,
       movimentacao,
       saldo: await calcularSaldoComSessao(alunoId, sessao),
     };
   });
 }
-
-export { obterRecompensaConclusao };

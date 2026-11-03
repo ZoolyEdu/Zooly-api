@@ -8,13 +8,10 @@
   },
   "scripts": {
     "dev": "nodemon src/server.js",
-    "dev:demo": "nodemon --exec \"node --env-file=.env.demo\" src/server.js",
     "start": "node src/server.js",
-    "start:demo": "node --env-file=.env.demo src/server.js",
-    "demo:verificar": "node --env-file=.env.demo scripts/demoDados.js",
-    "demo:semear": "node --env-file=.env.demo scripts/demoDados.js --executar",
-    "demo:limpar": "node --env-file=.env.demo scripts/demoDados.js --limpar --executar",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "migrar:tentativas": "node scripts/migrarTentativas.js",
+    "historias:semear": "node scripts/semearHistorias.js"
   },
   "repository": {
     "type": "git",
@@ -41,6 +38,7 @@
     "pdfkit": "^0.20.2"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^10.1.4",
     "nodemon": "^3.1.14"
   }
 }

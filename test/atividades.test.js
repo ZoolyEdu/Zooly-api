@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import app from "../src/app.js";
 import Atividade from "../src/models/Atividade.js";
 import ProgressoAtividade from "../src/models/ProgressoAtividade.js";
+import TentativaAtividade from "../src/models/TentativaAtividade.js";
 import Historia from "../src/models/Historia.js";
 import Professor from "../src/models/Professor.js";
 import Turma from "../src/models/Turma.js";
@@ -35,6 +36,7 @@ let turmas;
 let historias;
 let atividades;
 let progressosRelacionados;
+let tentativasRelacionadas;
 let movimentacoesRelacionadas;
 let chamadas;
 let jwtAnterior;
@@ -93,6 +95,7 @@ function instalarMocks() {
   ]);
   atividades = new Map();
   progressosRelacionados = new Map();
+  tentativasRelacionadas = new Map();
   movimentacoesRelacionadas = new Map();
   chamadas = {
     turma: [],
@@ -158,6 +161,19 @@ function instalarMocks() {
     return { deletedCount: encontrado ? 1 : 0 };
   });
   substituir(
+    TentativaAtividade,
+    "exists",
+    async (filtro) =>
+      tentativasRelacionadas.get(String(filtro.atividade)) ?? null,
+  );
+  substituir(TentativaAtividade, "deleteMany", async (filtro, options) => {
+    assert.ok(options.session);
+    chamadas.tentativasExcluidas = (chamadas.tentativasExcluidas ?? 0) + 1;
+    const encontrado = tentativasRelacionadas.get(String(filtro.atividade));
+    if (encontrado) tentativasRelacionadas.delete(String(filtro.atividade));
+    return { deletedCount: encontrado ? 1 : 0 };
+  });
+  substituir(
     MovimentacaoMoeda,
     "exists",
     async (filtro) =>
@@ -177,6 +193,7 @@ function instalarMocks() {
   substituir(mongoose, "startSession", async () => ({
     async withTransaction(operacao) {
       const snapshotProgressos = new Map(progressosRelacionados);
+      const snapshotTentativas = new Map(tentativasRelacionadas);
       const snapshotMovimentos = new Map(
         [...movimentacoesRelacionadas].map(([key, value]) => [
           key,
@@ -188,6 +205,7 @@ function instalarMocks() {
         return await operacao();
       } catch (error) {
         progressosRelacionados = snapshotProgressos;
+        tentativasRelacionadas = snapshotTentativas;
         movimentacoesRelacionadas = snapshotMovimentos;
         atividades = snapshotAtividades;
         throw error;
@@ -439,6 +457,7 @@ afterEach(() => {
       Historia,
       Atividade,
       ProgressoAtividade,
+      TentativaAtividade,
       MovimentacaoMoeda,
       mongoose,
     }[nomeModelo];
@@ -1642,12 +1661,17 @@ test("criador exclui atividade sem registros relacionados", async () => {
   assert.equal(chamadas.exclusao, 1);
 });
 
-test("excluir atividade concluída apaga progresso, preserva ledger e remove referência órfã", async () => {
+test("excluir atividade concluída apaga progresso e tentativas, preserva ledger e remove referência órfã", async () => {
   registrarAtividade();
   progressosRelacionados.set(atividadeId, {
     atividade: atividadeId,
     status: "concluida",
     respostas: [{ id: "resposta" }],
+  });
+  tentativasRelacionadas.set(atividadeId, {
+    atividade: atividadeId,
+    numeroTentativa: 1,
+    oficial: true,
   });
   movimentacoesRelacionadas.set(atividadeId, {
     atividade: atividadeId,
@@ -1673,6 +1697,8 @@ test("excluir atividade concluída apaga progresso, preserva ledger e remove ref
   assert.equal(resposta.status, 200);
   assert.equal(atividades.has(atividadeId), false);
   assert.equal(progressosRelacionados.has(atividadeId), false);
+  assert.equal(tentativasRelacionadas.has(atividadeId), false);
+  assert.equal(chamadas.tentativasExcluidas, 1);
   assert.equal(movimentacoesRelacionadas.has(atividadeId), true);
   const movimento = movimentacoesRelacionadas.get(atividadeId);
   assert.equal(Object.hasOwn(movimento, "atividade"), false);

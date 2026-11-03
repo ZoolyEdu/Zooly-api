@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 import Atividade, { etapasMissao } from "../models/Atividade.js";
-import Historia from "../models/Historia.js";
+import Historia, { STATUS_HISTORIA } from "../models/Historia.js";
+import { historiaAcessivel } from "./historiaService.js";
 import Professor from "../models/Professor.js";
 import Turma from "../models/Turma.js";
+import { erroHttp, transacoesIndisponiveis } from "../utils/erros.js";
 
 const camposAtividadeEntrada = [
   "turma",
@@ -15,10 +17,27 @@ const camposAtividadeEntrada = [
   "missao",
   "habilidadesBncc",
 ];
+// Na edição, a turma não pode ser trocada.
+const camposEdicao = camposAtividadeEntrada.filter((campo) => campo !== "turma");
+const camposQuestao = [
+  "tipo",
+  "enunciado",
+  "pontos",
+  "alternativas",
+  "respostasCorretas",
+];
 const codigoBnccValido = /^(?:EI0[1-3]|EF0[1-5])[A-Z]{2}\d{2}$/;
 
 function recompensaValida(valor) {
   return Number.isSafeInteger(valor) && valor >= 1;
+}
+
+// A ordem é opcional; quando vier, precisa ser um inteiro a partir de 1.
+function ordemValida(ordem) {
+  return (
+    ordem === undefined ||
+    (typeof ordem === "number" && Number.isInteger(ordem) && ordem >= 1)
+  );
 }
 
 function ehObjeto(valor) {
@@ -74,7 +93,12 @@ function validarCamposAninhados(
 ) {
   if (
     !ehObjeto(body.historia) ||
-    temCampoDesconhecido(body.historia, ["tipo", "historiaId", "texto"])
+    temCampoDesconhecido(body.historia, [
+      "tipo",
+      "historiaId",
+      "texto",
+      "bancoHistoriaId",
+    ])
   ) {
     return false;
   }
@@ -88,18 +112,11 @@ function validarCamposAninhados(
   if (Object.hasOwn(body, "questoes") && !Array.isArray(body.questoes))
     return false;
 
+  const camposPermitidos = permitirIdsSubdocumentos
+    ? ["_id", ...camposQuestao]
+    : camposQuestao;
   for (const questao of body.questoes ?? []) {
-    const camposQuestao = permitirIdsSubdocumentos
-      ? [
-          "_id",
-          "tipo",
-          "enunciado",
-          "pontos",
-          "alternativas",
-          "respostasCorretas",
-        ]
-      : ["tipo", "enunciado", "pontos", "alternativas", "respostasCorretas"];
-    if (!ehObjeto(questao) || temCampoDesconhecido(questao, camposQuestao))
+    if (!ehObjeto(questao) || temCampoDesconhecido(questao, camposPermitidos))
       return false;
 
     if (Object.hasOwn(questao, "_id") && !mongoose.isValidObjectId(questao._id))
@@ -140,22 +157,10 @@ function validarCamposAninhados(
 function validarCorpoEdicao(body) {
   return (
     ehObjeto(body) &&
-    !temCampoDesconhecido(body, [
-      "titulo",
-      "ordem",
-      "historia",
-      "questoes",
-      "prazo",
-      "recompensaMoedas",
-      "missao",
-      "habilidadesBncc",
-    ]) &&
+    !temCampoDesconhecido(body, camposEdicao) &&
     typeof body.titulo === "string" &&
     Boolean(body.titulo.trim()) &&
-    (body.ordem === undefined ||
-      (typeof body.ordem === "number" &&
-        Number.isInteger(body.ordem) &&
-        body.ordem >= 1)) &&
+    ordemValida(body.ordem) &&
     (body.recompensaMoedas === undefined ||
       recompensaValida(body.recompensaMoedas)) &&
     prazoDeEntradaValido(body.prazo) &&
@@ -230,19 +235,56 @@ function aplicarRespostasPorIndice(atividade, questoesEntrada) {
   return true;
 }
 
-async function validarHistoriaOficial(historiaEntrada) {
-  if (historiaEntrada.tipo !== "oficial") return { valida: true };
-
-  if (
-    typeof historiaEntrada.historiaId !== "string" ||
-    !mongoose.isValidObjectId(historiaEntrada.historiaId)
-  ) {
+/**
+ * Confere a história escolhida no Banco de Histórias e devolve a cópia que fica na atividade.
+ * - `tipo: "oficial"`: o servidor copia título e texto para `tituloCopia`/`textoCopia`.
+ * - `tipo: "propria"` com `bancoHistoriaId`: o texto já vem do professor; só a origem é conferida.
+ * A cópia existente é mantida quando a atividade é editada sem trocar de história, para que
+ * mudanças posteriores no banco nunca alterem atividades já criadas.
+ */
+async function prepararHistoria(historiaEntrada, professorId, anterior = null) {
+  const oficial = historiaEntrada.tipo === "oficial";
+  const id = oficial
+    ? historiaEntrada.historiaId
+    : historiaEntrada.bancoHistoriaId;
+  if (!oficial && id === undefined) return {};
+  if (typeof id !== "string" || !mongoose.isValidObjectId(id)) {
     return { erro: "historia-id-invalido" };
   }
 
-  const historia = await Historia.findById(historiaEntrada.historiaId);
-  if (!historia) return { erro: "historia-nao-encontrada" };
-  return { valida: true };
+  const idAnterior = oficial ? anterior?.historiaId : anterior?.bancoHistoriaId;
+  const mesmaHistoria =
+    anterior?.tipo === historiaEntrada.tipo && String(idAnterior) === id;
+  if (mesmaHistoria && (!oficial || anterior.textoCopia)) {
+    return oficial
+      ? {
+          copia: {
+            tituloCopia: anterior.tituloCopia,
+            textoCopia: anterior.textoCopia,
+          },
+        }
+      : {};
+  }
+
+  const historia = await Historia.findById(id);
+  if (!historiaAcessivel(historia, professorId))
+    return { erro: "historia-nao-encontrada" };
+  if (!mesmaHistoria && historia.status === STATUS_HISTORIA.arquivada)
+    return { erro: "historia-arquivada" };
+  return oficial
+    ? {
+        copia: {
+          tituloCopia: historia.titulo,
+          textoCopia: historia.conteudo,
+        },
+      }
+    : {};
+}
+
+function aplicarCopiaHistoria(atividade, copia) {
+  if (!copia) return;
+  atividade.set("historia.tituloCopia", copia.tituloCopia);
+  atividade.set("historia.textoCopia", copia.textoCopia);
 }
 
 async function proximaOrdemDisponivel(turmaId) {
@@ -271,6 +313,23 @@ function removerRespostasCorretas(valor) {
   );
 }
 
+function listaSemGabarito(atividades) {
+  return atividades.map((atividade) =>
+    removerRespostasCorretas(
+      typeof atividade.toObject === "function" ? atividade.toObject() : atividade,
+    ),
+  );
+}
+
+// Busca a atividade e confere se o professor é o autor. `erroAutor` varia conforme a operação.
+async function buscarDoAutor(atividadeId, professorId, erroAutor) {
+  const atividade = await Atividade.findById(atividadeId);
+  if (!atividade) return { erro: "atividade-nao-encontrada" };
+  if (String(atividade.professorCriador) !== String(professorId))
+    return { erro: erroAutor };
+  return { atividade };
+}
+
 async function criar({ body, professorId }) {
   if (!ehObjeto(body)) return { erro: "corpo-deve-ser-objeto" };
   if (Object.hasOwn(body, "status"))
@@ -283,10 +342,7 @@ async function criar({ body, professorId }) {
     !mongoose.isValidObjectId(body.turma) ||
     typeof body.titulo !== "string" ||
     !body.titulo.trim() ||
-    (body.ordem !== undefined &&
-      (typeof body.ordem !== "number" ||
-        !Number.isInteger(body.ordem) ||
-        body.ordem < 1)) ||
+    !ordemValida(body.ordem) ||
     (body.recompensaMoedas !== undefined &&
       !recompensaValida(body.recompensaMoedas)) ||
     !prazoDeEntradaValido(body.prazo) ||
@@ -319,8 +375,9 @@ async function criar({ body, professorId }) {
   if (String(turma.professorResponsavel) !== String(professorId))
     return { erro: "professor-nao-responsavel" };
 
-  const historia = await validarHistoriaOficial(body.historia);
+  const historia = await prepararHistoria(body.historia, professorId);
   if (historia.erro) return historia;
+  aplicarCopiaHistoria(atividade, historia.copia);
 
   const ordemManual = body.ordem !== undefined;
   if (
@@ -368,15 +425,7 @@ async function listarPublicadas(professorId) {
     .select({ "questoes.respostasCorretas": 0 })
     .sort({ publicadoEm: 1, _id: 1 });
 
-  return {
-    atividades: atividades.map((atividade) =>
-      removerRespostasCorretas(
-        typeof atividade.toObject === "function"
-          ? atividade.toObject()
-          : atividade,
-      ),
-    ),
-  };
+  return { atividades: listaSemGabarito(atividades) };
 }
 
 async function listarDoProfessor(professorId) {
@@ -387,26 +436,13 @@ async function listarDoProfessor(professorId) {
     .select({ "questoes.respostasCorretas": 0 })
     .sort({ updatedAt: -1, _id: -1 });
 
-  return {
-    atividades: atividades.map((atividade) =>
-      removerRespostasCorretas(
-        typeof atividade.toObject === "function"
-          ? atividade.toObject()
-          : atividade,
-      ),
-    ),
-  };
+  return { atividades: listaSemGabarito(atividades) };
 }
 
 async function consultar({ atividadeId, professorId }) {
   if (!mongoose.isValidObjectId(atividadeId))
     return { erro: "atividade-id-invalido" };
-
-  const atividade = await Atividade.findById(atividadeId);
-  if (!atividade) return { erro: "atividade-nao-encontrada" };
-  if (String(atividade.professorCriador) !== String(professorId))
-    return { erro: "somente-autor-consulta" };
-  return { atividade };
+  return buscarDoAutor(atividadeId, professorId, "somente-autor-consulta");
 }
 
 async function publicar({ atividadeId, professorId, body }) {
@@ -415,10 +451,13 @@ async function publicar({ atividadeId, professorId, body }) {
   if (body !== undefined && (!ehObjeto(body) || Object.keys(body).length > 0))
     return { erro: "publicacao-com-campos" };
 
-  const atividade = await Atividade.findById(atividadeId);
-  if (!atividade) return { erro: "atividade-nao-encontrada" };
-  if (String(atividade.professorCriador) !== String(professorId))
-    return { erro: "somente-autor-publica" };
+  const busca = await buscarDoAutor(
+    atividadeId,
+    professorId,
+    "somente-autor-publica",
+  );
+  if (busca.erro) return busca;
+  const { atividade } = busca;
   if (atividade.status !== "rascunho")
     return { erro: "somente-rascunho-publica" };
 
@@ -427,6 +466,20 @@ async function publicar({ atividadeId, professorId, body }) {
   await atividade.validate();
   await atividade.save();
   return { atividade };
+}
+
+// Registros do aluno apagados junto com a atividade (as moedas só perdem o vínculo).
+const REGISTROS_REMOVIVEIS_COM_ATIVIDADE = [
+  "ProgressoAtividade",
+  "TentativaAtividade",
+  "MovimentacaoMoeda",
+];
+
+function temRegistroNaoRemovivel(referencias) {
+  return referencias.some(
+    ({ Modelo }) =>
+      !REGISTROS_REMOVIVEIS_COM_ATIVIDADE.includes(Modelo.modelName),
+  );
 }
 
 function pathsReferenciandoAtividade(schema, prefixo = "") {
@@ -459,42 +512,24 @@ async function referenciasDaAtividade(atividadeId, sessao) {
   return referencias;
 }
 
-function erroHttp(mensagem, status) {
-  const erro = new Error(mensagem);
-  erro.status = status;
-  return erro;
-}
-
-function transacoesIndisponiveis(erro) {
-  return (
-    erro?.code === 20 ||
-    erro?.code === 303 ||
-    /transaction numbers are only allowed|replica set|transactions are not supported/i.test(
-      erro?.message ?? "",
-    )
-  );
-}
-
 async function excluir({ atividadeId, professorId }) {
   if (!mongoose.isValidObjectId(atividadeId))
     return { erro: "atividade-id-invalido" };
 
-  const atividade = await Atividade.findById(atividadeId);
-  if (!atividade) return { erro: "atividade-nao-encontrada" };
-  if (String(atividade.professorCriador) !== String(professorId))
-    return { erro: "somente-autor-exclui" };
+  const busca = await buscarDoAutor(
+    atividadeId,
+    professorId,
+    "somente-autor-exclui",
+  );
+  if (busca.erro) return busca;
+  const { atividade } = busca;
   const referencias = await referenciasDaAtividade(atividade._id);
   if (referencias.length === 0) {
     await atividade.deleteOne();
     return { excluida: true };
   }
 
-  if (
-    referencias.some(
-      ({ Modelo }) =>
-        !["ProgressoAtividade", "MovimentacaoMoeda"].includes(Modelo.modelName),
-    )
-  ) {
+  if (temRegistroNaoRemovivel(referencias)) {
     return { erro: "atividade-com-registros" };
   }
 
@@ -506,14 +541,7 @@ async function excluir({ atividadeId, professorId }) {
         atividade._id,
         sessao,
       );
-      if (
-        referenciasAtuais.some(
-          ({ Modelo }) =>
-            !["ProgressoAtividade", "MovimentacaoMoeda"].includes(
-              Modelo.modelName,
-            ),
-        )
-      ) {
+      if (temRegistroNaoRemovivel(referenciasAtuais)) {
         throw erroHttp(
           "A atividade possui referências que não podem ser removidas com segurança.",
           409,
@@ -553,14 +581,22 @@ async function atualizar({ atividadeId, professorId, body }) {
   if (!mongoose.isValidObjectId(atividadeId))
     return { erro: "atividade-id-invalido" };
 
-  const atividade = await Atividade.findById(atividadeId);
-  if (!atividade) return { erro: "atividade-nao-encontrada" };
-  if (String(atividade.professorCriador) !== String(professorId))
-    return { erro: "somente-autor-edita" };
+  const busca = await buscarDoAutor(
+    atividadeId,
+    professorId,
+    "somente-autor-edita",
+  );
+  if (busca.erro) return busca;
+  const { atividade } = busca;
   if (!validarCorpoEdicao(body)) return { erro: "dados-edicao-invalidos" };
   if (!idsSubdocumentosPertencemAtividade(body.questoes, atividade))
     return { erro: "ids-subdocumentos-invalidos" };
 
+  const historiaAnterior = atividade.historia
+    ? typeof atividade.historia.toObject === "function"
+      ? atividade.historia.toObject()
+      : { ...atividade.historia }
+    : null;
   atividade.titulo = body.titulo;
   if (body.ordem !== undefined) atividade.ordem = body.ordem;
   atividade.historia = body.historia;
@@ -591,8 +627,13 @@ async function atualizar({ atividadeId, professorId, body }) {
   }
   await atividade.validate();
 
-  const historia = await validarHistoriaOficial(body.historia);
+  const historia = await prepararHistoria(
+    body.historia,
+    professorId,
+    historiaAnterior,
+  );
   if (historia.erro) return historia;
+  aplicarCopiaHistoria(atividade, historia.copia);
 
   try {
     await atividade.save();

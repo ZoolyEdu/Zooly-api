@@ -4,6 +4,7 @@ import Atividade from "../models/Atividade.js";
 import ProgressoAtividade from "../models/ProgressoAtividade.js";
 import Professor from "../models/Professor.js";
 import Turma from "../models/Turma.js";
+import { listarTentativas, resumoTentativa } from "./tentativaService.js";
 
 const lista = (valor) => (Array.isArray(valor) ? valor : []);
 const fusoRelatorio = "America/Sao_Paulo";
@@ -73,7 +74,7 @@ function respostaCorreta(selecionadas, corretas) {
   return a.length === b.length && a.every((id, indice) => id === b[indice]);
 }
 
-export function consolidarDesempenho(
+function consolidarDesempenho(
   aluno,
   atividades,
   progressos,
@@ -304,9 +305,105 @@ async function obterAluno({ alunoId, professorId }) {
   };
 }
 
+// Correção de uma tentativa, calculada no servidor a partir do gabarito atual da atividade.
+function corrigirTentativa(tentativa, atividade) {
+  const questoes = new Map(
+    lista(atividade.questoes).map((questao) => [String(questao._id), questao]),
+  );
+  let acertos = 0;
+  let erros = 0;
+  const respostas = lista(tentativa.respostas).map((resposta) => {
+    const questao = questoes.get(String(resposta.questaoId));
+    const correta = questao
+      ? respostaCorreta(
+          resposta.alternativasSelecionadas,
+          questao.respostasCorretas,
+        )
+      : null;
+    if (correta === true) acertos++;
+    if (correta === false) erros++;
+    return {
+      questaoId: resposta.questaoId,
+      enunciado: questao?.enunciado ?? null,
+      alternativasSelecionadas: lista(resposta.alternativasSelecionadas),
+      correta,
+    };
+  });
+  const corrigidas = acertos + erros;
+  return {
+    ...resumoTentativa(tentativa),
+    respostas,
+    acertos,
+    erros,
+    percentualAcerto: corrigidas
+      ? Math.round((acertos / corrigidas) * 10000) / 100
+      : null,
+  };
+}
+
+/**
+ * Histórico de tentativas de um aluno, para o professor responsável pela turma.
+ * Só considera atividades da turma atual do aluno (como o desempenho). Não altera
+ * indicadores: o desempenho oficial continua vindo da tentativa oficial.
+ */
+async function obterTentativasAluno({ alunoId, professorId, atividadeId }) {
+  if (atividadeId !== undefined && !mongoose.isValidObjectId(atividadeId))
+    return { erro: 400 };
+  const aluno = await Aluno.findById(alunoId);
+  if (!aluno) return { erro: 404 };
+  const acesso = await turmaAutorizada(aluno.turma, professorId);
+  if (acesso.erro) return acesso;
+
+  const atividades = await Atividade.find({
+    turma: acesso.turma._id,
+    ...(atividadeId ? { _id: atividadeId } : {}),
+  }).sort({ ordem: 1, _id: 1 });
+  if (atividadeId && atividades.length === 0) return { erro: 404 };
+
+  const tentativas = atividades.length
+    ? await listarTentativas({
+        aluno: aluno._id,
+        atividade: { $in: atividades.map((atividade) => atividade._id) },
+      })
+    : [];
+  const porAtividade = new Map();
+  for (const tentativa of tentativas) {
+    const chave = String(tentativa.atividade);
+    porAtividade.set(chave, [...(porAtividade.get(chave) ?? []), tentativa]);
+  }
+
+  return {
+    turma: { id: acesso.turma._id, nome: acesso.turma.nome },
+    aluno: {
+      id: aluno._id,
+      ra: aluno.ra,
+      nomeCompleto: aluno.nomeCompleto ?? null,
+    },
+    atividades: atividades
+      .filter((atividade) => porAtividade.has(String(atividade._id)))
+      .map((atividade) => {
+        const daAtividade = porAtividade.get(String(atividade._id));
+        return {
+          atividade: {
+            id: atividade._id,
+            titulo: atividade.titulo,
+            ordem: atividade.ordem ?? null,
+          },
+          totalTentativas: daAtividade.length,
+          tentativaOficial:
+            daAtividade.find((tentativa) => tentativa.oficial)?._id ?? null,
+          tentativas: daAtividade.map((tentativa) =>
+            corrigirTentativa(tentativa, atividade),
+          ),
+        };
+      }),
+  };
+}
+
 export default {
   turmaAutorizada,
   obterTurma,
   obterRelatorioSemanal,
   obterAluno,
+  obterTentativasAluno,
 };

@@ -149,14 +149,6 @@ function dadosEntrada(overrides = {}) {
   };
 }
 
-function assertErroCredenciais(resposta, corpo) {
-  assert.equal(resposta.status, 401);
-  assert.deepEqual(corpo, {
-    sucesso: false,
-    mensagem: mensagemCredenciaisInvalidas,
-  });
-}
-
 before(async () => {
   servidor = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => servidor.once("listening", resolve));

@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-const respostaSchema = new Schema(
+export const respostaSchema = new Schema(
   {
     questaoId: {
       type: Schema.Types.ObjectId,
@@ -54,8 +54,15 @@ const progressoAtividadeSchema = new Schema(
       type: [respostaSchema],
       default: [],
     },
+    // Antes da primeira conclusão, espelham a tentativa em andamento. Depois, são uma cópia
+    // congelada da tentativa oficial: o desempenho do professor continua lendo estes campos.
     respostasRegistradasEm: {
       type: Date,
+      default: null,
+    },
+    tentativaOficial: {
+      type: Schema.Types.ObjectId,
+      ref: "TentativaAtividade",
       default: null,
     },
   },

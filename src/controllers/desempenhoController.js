@@ -84,4 +84,21 @@ async function aluno(req, res, next) {
   }
 }
 
-export default { turma, semanal, semanalPdf, aluno };
+async function tentativasAluno(req, res, next) {
+  try {
+    const { alunoId } = req.params;
+    if (!mongoose.isValidObjectId(alunoId)) return responderErro(res, 400);
+
+    const resultado = await desempenhoService.obterTentativasAluno({
+      alunoId,
+      professorId: req.usuario.id,
+      atividadeId: req.query.atividadeId,
+    });
+    if (resultado.erro) return responderErro(res, resultado.erro);
+    return res.json({ sucesso: true, ...resultado });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export default { turma, semanal, semanalPdf, aluno, tentativasAluno };
