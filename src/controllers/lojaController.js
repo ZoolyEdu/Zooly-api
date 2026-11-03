@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
-import lojaService from '../services/lojaService.js';
+import mongoose from "mongoose";
+import lojaService from "../services/lojaService.js";
 
 function erro(res, status, mensagem) {
   return res.status(status).json({ sucesso: false, mensagem });
@@ -17,12 +17,13 @@ async function listarAvatares(req, res, next) {
 async function comprarAvatar(req, res, next) {
   try {
     const alunoId = req.usuario.id;
-    if (!mongoose.isValidObjectId(alunoId)) return erro(res, 401, 'Identidade do aluno inválida.');
+    if (!mongoose.isValidObjectId(alunoId))
+      return erro(res, 401, "Identidade do aluno inválida.");
 
     const avatar = lojaService.buscarAvatarCatalogo(req.params.avatarId);
-    if (!avatar) return erro(res, 404, 'Avatar não encontrado.');
+    if (!avatar) return erro(res, 404, "Avatar não encontrado.");
     if (req.body && Object.keys(req.body).length) {
-      return erro(res, 400, 'A compra não aceita dados no corpo.');
+      return erro(res, 400, "A compra não aceita dados no corpo.");
     }
 
     const resultado = await lojaService.comprar({ alunoId, avatar });

@@ -1,46 +1,43 @@
-
-import mongoose from 'mongoose';
-
+import mongoose from "mongoose";
 const alunoSchema = new mongoose.Schema(
   {
     ra: {
       type: String,
-      required: [true, 'O RA é obrigatório.'],
+      required: [true, "O RA é obrigatório."],
       unique: true,
-      trim: true
+      trim: true,
     },
     nomeCompleto: {
       type: String,
       trim: true,
-      default: null
+      default: null,
     },
     sexo: {
       type: String,
-      enum: ['feminino', 'masculino', 'nao_informado'],
-      default: 'nao_informado'
+      enum: ["feminino", "masculino", "nao_informado"],
+      default: "nao_informado",
     },
     turma: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Turma',
-      required: [true, 'A turma é obrigatória.']
+      ref: "Turma",
+      required: [true, "A turma é obrigatória."],
     },
     cadastroInicialConcluido: {
       type: Boolean,
-      default: false
+      default: false,
     },
     avatarSelecionado: {
       type: String,
       default: null,
-      trim: true
+      trim: true,
     },
-    // Escrita de serialização para operações de moedas; não armazena saldo.
     versaoMovimentacoesMoeda: {
       type: Number,
       default: 0,
-      min: 0
-    }
+      min: 0,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-export default mongoose.model('Aluno', alunoSchema);
+export default mongoose.model("Aluno", alunoSchema);

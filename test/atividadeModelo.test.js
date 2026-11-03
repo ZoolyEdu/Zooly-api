@@ -1,7 +1,7 @@
-import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import mongoose from 'mongoose';
-import Atividade from '../src/models/Atividade.js';
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import mongoose from "mongoose";
+import Atividade from "../src/models/Atividade.js";
 
 const turmaId = new mongoose.Types.ObjectId();
 const professorId = new mongoose.Types.ObjectId();
@@ -11,44 +11,51 @@ function dadosValidos(overrides = {}) {
   return {
     turma: turmaId,
     professorCriador: professorId,
-    titulo: 'Leitura e compreensão',
-    historia: { tipo: 'oficial', historiaId },
-    questoes: [{
-      enunciado: 'Qual alternativa está correta?',
-      alternativas: [
-        { _id: new mongoose.Types.ObjectId(), texto: 'Primeira resposta' },
-        { _id: new mongoose.Types.ObjectId(), texto: 'Segunda resposta' }
-      ],
-      respostasCorretas: []
-    }],
-    ...overrides
+    titulo: "Leitura e compreensão",
+    historia: { tipo: "oficial", historiaId },
+    questoes: [
+      {
+        enunciado: "Qual alternativa está correta?",
+        alternativas: [
+          { _id: new mongoose.Types.ObjectId(), texto: "Primeira resposta" },
+          { _id: new mongoose.Types.ObjectId(), texto: "Segunda resposta" },
+        ],
+        respostasCorretas: [],
+      },
+    ],
+    ...overrides,
   };
 }
 
 function preencherRespostasCorretas(dados, indices = [0]) {
   const questao = dados.questoes[0];
-  questao.respostasCorretas = indices.map(indice => questao.alternativas[indice]._id);
+  questao.respostasCorretas = indices.map(
+    (indice) => questao.alternativas[indice]._id,
+  );
   return dados;
 }
 
 async function errosDeValidacao(dados, campoEsperado) {
   const atividade = new Atividade(dados);
-  await assert.rejects(atividade.validate(), erro => {
-    assert.equal(erro.name, 'ValidationError');
+  await assert.rejects(atividade.validate(), (erro) => {
+    assert.equal(erro.name, "ValidationError");
     const caminhos = Object.keys(erro.errors);
     assert.ok(
-      caminhos.some(caminho => caminho === campoEsperado || caminho.startsWith(`${campoEsperado}.`)),
-      `esperava erro em ${campoEsperado}; caminhos: ${caminhos.join(', ')}`
+      caminhos.some(
+        (caminho) =>
+          caminho === campoEsperado || caminho.startsWith(`${campoEsperado}.`),
+      ),
+      `esperava erro em ${campoEsperado}; caminhos: ${caminhos.join(", ")}`,
     );
     return true;
   });
 }
 
-test('exige turma, professor criador, título e origem da história', async () => {
+test("exige turma, professor criador, título e origem da história", async () => {
   const atividade = new Atividade({});
 
-  await assert.rejects(atividade.validate(), erro => {
-    assert.equal(erro.name, 'ValidationError');
+  await assert.rejects(atividade.validate(), (erro) => {
+    assert.equal(erro.name, "ValidationError");
     assert.ok(erro.errors.turma);
     assert.ok(erro.errors.professorCriador);
     assert.ok(erro.errors.titulo);
@@ -57,129 +64,154 @@ test('exige turma, professor criador, título e origem da história', async () =
   });
 });
 
-test('começa como rascunho e aceita referência oficial com respostas corretas válidas', async () => {
+test("começa como rascunho e aceita referência oficial com respostas corretas válidas", async () => {
   const dados = preencherRespostasCorretas(dadosValidos());
   const atividade = new Atividade(dados);
 
   await atividade.validate();
 
-  assert.equal(atividade.status, 'rascunho');
+  assert.equal(atividade.status, "rascunho");
   assert.equal(String(atividade.historia.historiaId), String(historiaId));
   assert.equal(atividade.questoes.length, 1);
   assert.equal(atividade.questoes[0].alternativas.length, 2);
-  assert.equal(String(atividade.questoes[0].respostasCorretas[0]), String(atividade.questoes[0].alternativas[0]._id));
+  assert.equal(
+    String(atividade.questoes[0].respostasCorretas[0]),
+    String(atividade.questoes[0].alternativas[0]._id),
+  );
 });
 
-test('aceita texto próprio sem referência a história oficial', async () => {
-  const dados = preencherRespostasCorretas(dadosValidos({
-    historia: { tipo: 'propria', texto: 'Texto escrito pelo professor.' }
-  }));
+test("aceita texto próprio sem referência a história oficial", async () => {
+  const dados = preencherRespostasCorretas(
+    dadosValidos({
+      historia: { tipo: "propria", texto: "Texto escrito pelo professor." },
+    }),
+  );
   const atividade = new Atividade(dados);
 
   await atividade.validate();
 
-  assert.equal(atividade.historia.tipo, 'propria');
-  assert.equal(atividade.historia.texto, 'Texto escrito pelo professor.');
+  assert.equal(atividade.historia.tipo, "propria");
+  assert.equal(atividade.historia.texto, "Texto escrito pelo professor.");
   assert.equal(atividade.historia.historiaId, undefined);
 });
 
-test('persiste etapas da missão e habilidades BNCC e calcula a pontuação total', async () => {
-  const dados = preencherRespostasCorretas(dadosValidos({
-    missao: { etapas: ['ler_texto', 'responder_perguntas'] },
-    habilidadesBncc: [{
-      codigo: 'EF01LP05',
-      texto: 'Reconhecer o sistema de escrita alfabética.',
-      etapa: 'EF'
-    }]
-  }));
+test("persiste etapas da missão e habilidades BNCC e calcula a pontuação total", async () => {
+  const dados = preencherRespostasCorretas(
+    dadosValidos({
+      missao: { etapas: ["ler_texto", "responder_perguntas"] },
+      habilidadesBncc: [
+        {
+          codigo: "EF01LP05",
+          texto: "Reconhecer o sistema de escrita alfabética.",
+          etapa: "EF",
+        },
+      ],
+    }),
+  );
   dados.questoes[0].pontos = 12;
   const atividade = new Atividade(dados);
 
   await atividade.validate();
 
-  assert.deepEqual(atividade.missao.etapas, ['ler_texto', 'responder_perguntas']);
-  assert.equal(atividade.habilidadesBncc[0].codigo, 'EF01LP05');
-  assert.equal(atividade.questoes[0].tipo, 'multipla_escolha');
+  assert.deepEqual(atividade.missao.etapas, [
+    "ler_texto",
+    "responder_perguntas",
+  ]);
+  assert.equal(atividade.habilidadesBncc[0].codigo, "EF01LP05");
+  assert.equal(atividade.questoes[0].tipo, "multipla_escolha");
   assert.equal(atividade.pontuacaoTotal, 12);
 });
 
-test('mantém documentos legados sem missão, BNCC e pontos consultáveis', async () => {
+test("mantém documentos legados sem missão, BNCC e pontos consultáveis", async () => {
   const legado = new Atividade(preencherRespostasCorretas(dadosValidos()));
 
   await legado.validate();
 
   assert.deepEqual(legado.missao.etapas, []);
   assert.deepEqual(legado.habilidadesBncc, []);
-  assert.equal(legado.questoes[0].tipo, 'multipla_escolha');
+  assert.equal(legado.questoes[0].tipo, "multipla_escolha");
   assert.equal(legado.questoes[0].pontos, 0);
   assert.equal(legado.pontuacaoTotal, 0);
 });
 
-test('rejeita pontos negativos ou não inteiros e etapas de missão não suportadas', async () => {
+test("rejeita pontos negativos ou não inteiros e etapas de missão não suportadas", async () => {
   for (const pontos of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     const dados = preencherRespostasCorretas(dadosValidos());
     dados.questoes[0].pontos = pontos;
-    await errosDeValidacao(dados, 'questoes');
+    await errosDeValidacao(dados, "questoes");
   }
 
   await errosDeValidacao(
-    preencherRespostasCorretas(dadosValidos({ missao: { etapas: ['etapa-inexistente'] } })),
-    'missao.etapas'
+    preencherRespostasCorretas(
+      dadosValidos({ missao: { etapas: ["etapa-inexistente"] } }),
+    ),
+    "missao.etapas",
   );
 });
 
-test('rejeita origem da história ausente ou sem origem selecionada', async () => {
+test("rejeita origem da história ausente ou sem origem selecionada", async () => {
   await errosDeValidacao(
     preencherRespostasCorretas(dadosValidos({ historia: undefined })),
-    'historia'
+    "historia",
   );
   await errosDeValidacao(
-    preencherRespostasCorretas(dadosValidos({ historia: { tipo: 'oficial' } })),
-    'historia'
+    preencherRespostasCorretas(dadosValidos({ historia: { tipo: "oficial" } })),
+    "historia",
   );
   await errosDeValidacao(
-    preencherRespostasCorretas(dadosValidos({ historia: { tipo: 'propria', texto: '   ' } })),
-    'historia'
+    preencherRespostasCorretas(
+      dadosValidos({ historia: { tipo: "propria", texto: "   " } }),
+    ),
+    "historia",
   );
 });
 
-test('rejeita dados que selecionam história oficial e texto próprio ao mesmo tempo', async () => {
+test("rejeita dados que selecionam história oficial e texto próprio ao mesmo tempo", async () => {
   await errosDeValidacao(
-    preencherRespostasCorretas(dadosValidos({
-      historia: { tipo: 'oficial', historiaId, texto: 'Texto concorrente.' }
-    })),
-    'historia'
+    preencherRespostasCorretas(
+      dadosValidos({
+        historia: { tipo: "oficial", historiaId, texto: "Texto concorrente." },
+      }),
+    ),
+    "historia",
   );
   await errosDeValidacao(
-    preencherRespostasCorretas(dadosValidos({
-      historia: { tipo: 'propria', historiaId, texto: 'Texto próprio.' }
-    })),
-    'historia'
+    preencherRespostasCorretas(
+      dadosValidos({
+        historia: { tipo: "propria", historiaId, texto: "Texto próprio." },
+      }),
+    ),
+    "historia",
   );
 });
 
-test('cada questão exige ao menos duas alternativas', async () => {
+test("cada questão exige ao menos duas alternativas", async () => {
   const dados = dadosValidos();
   dados.questoes[0].alternativas.pop();
   preencherRespostasCorretas(dados);
 
-  await errosDeValidacao(dados, 'questoes');
-  await errosDeValidacao({
-    ...preencherRespostasCorretas(dadosValidos()),
-    questoes: [{ ...dadosValidos().questoes[0], alternativas: null }]
-  }, 'questoes');
+  await errosDeValidacao(dados, "questoes");
+  await errosDeValidacao(
+    {
+      ...preencherRespostasCorretas(dadosValidos()),
+      questoes: [{ ...dadosValidos().questoes[0], alternativas: null }],
+    },
+    "questoes",
+  );
 });
 
-test('exige ao menos uma resposta correta vinculada a alternativa existente', async () => {
+test("exige ao menos uma resposta correta vinculada a alternativa existente", async () => {
   const semResposta = dadosValidos();
-  await errosDeValidacao(semResposta, 'questoes');
+  await errosDeValidacao(semResposta, "questoes");
 
   const respostaInexistente = dadosValidos();
-  respostaInexistente.questoes[0].respostasCorretas = [new mongoose.Types.ObjectId()];
-  await errosDeValidacao(respostaInexistente, 'questoes');
+  respostaInexistente.questoes[0].respostasCorretas = [
+    new mongoose.Types.ObjectId(),
+  ];
+  await errosDeValidacao(respostaInexistente, "questoes");
 });
 
-test('permite várias respostas corretas sem duplicatas', async () => {
+test("permite várias respostas corretas sem duplicatas", async () => {
   const dados = preencherRespostasCorretas(dadosValidos(), [0, 1]);
   const atividade = new Atividade(dados);
 
@@ -187,48 +219,67 @@ test('permite várias respostas corretas sem duplicatas', async () => {
   assert.equal(atividade.questoes[0].respostasCorretas.length, 2);
 });
 
-test('rejeita a mesma alternativa repetida nas respostas corretas', async () => {
+test("rejeita a mesma alternativa repetida nas respostas corretas", async () => {
   const dados = preencherRespostasCorretas(dadosValidos(), [0, 0]);
-  await errosDeValidacao(dados, 'questoes');
+  await errosDeValidacao(dados, "questoes");
 });
 
-test('mantém os IDs das questões e alternativas ao reconstruir o documento', async () => {
+test("mantém os IDs das questões e alternativas ao reconstruir o documento", async () => {
   const atividadeOriginal = new Atividade(
-    preencherRespostasCorretas(dadosValidos(), [0, 1])
+    preencherRespostasCorretas(dadosValidos(), [0, 1]),
   );
   const questaoId = atividadeOriginal.questoes[0]._id;
-  const alternativaIds = atividadeOriginal.questoes[0].alternativas.map(({ _id }) => String(_id));
+  const alternativaIds = atividadeOriginal.questoes[0].alternativas.map(
+    ({ _id }) => String(_id),
+  );
   const atividadeReconstruida = new Atividade(atividadeOriginal.toObject());
 
-  assert.equal(String(atividadeReconstruida.questoes[0]._id), String(questaoId));
+  assert.equal(
+    String(atividadeReconstruida.questoes[0]._id),
+    String(questaoId),
+  );
   assert.deepEqual(
-    atividadeReconstruida.questoes[0].alternativas.map(({ _id }) => String(_id)),
-    alternativaIds
+    atividadeReconstruida.questoes[0].alternativas.map(({ _id }) =>
+      String(_id),
+    ),
+    alternativaIds,
   );
   assert.deepEqual(
     atividadeReconstruida.questoes[0].respostasCorretas.map(String),
-    atividadeReconstruida.questoes[0].alternativas.map(({ _id }) => String(_id))
+    atividadeReconstruida.questoes[0].alternativas.map(({ _id }) =>
+      String(_id),
+    ),
   );
 });
 
-test('rejeita status de publicação fora dos valores definidos', async () => {
-  const dados = preencherRespostasCorretas(dadosValidos({ status: 'arquivada' }));
-  await errosDeValidacao(dados, 'status');
+test("rejeita status de publicação fora dos valores definidos", async () => {
+  const dados = preencherRespostasCorretas(
+    dadosValidos({ status: "arquivada" }),
+  );
+  await errosDeValidacao(dados, "status");
 });
 
-test('recompensa da atividade é opcional para documentos legados e aceita somente inteiro positivo seguro', async () => {
+test("recompensa da atividade é opcional para documentos legados e aceita somente inteiro positivo seguro", async () => {
   const legado = new Atividade(preencherRespostasCorretas(dadosValidos()));
   await legado.validate();
   assert.equal(legado.recompensaMoedas, undefined);
 
-  const valida = new Atividade(preencherRespostasCorretas(dadosValidos({ recompensaMoedas: 25 })));
+  const valida = new Atividade(
+    preencherRespostasCorretas(dadosValidos({ recompensaMoedas: 25 })),
+  );
   await valida.validate();
   assert.equal(valida.recompensaMoedas, 25);
 
-  for (const recompensaMoedas of [0, -1, 1.5, null, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const recompensaMoedas of [
+    0,
+    -1,
+    1.5,
+    null,
+    Number.MAX_SAFE_INTEGER + 1,
+  ]) {
     await errosDeValidacao(
       preencherRespostasCorretas(dadosValidos({ recompensaMoedas })),
-      'recompensaMoedas'
+      "recompensaMoedas",
     );
   }
 });

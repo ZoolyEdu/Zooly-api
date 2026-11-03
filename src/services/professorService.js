@@ -1,12 +1,13 @@
-import bcrypt from 'bcryptjs';
-import Professor from '../models/Professor.js';
-import Escola from '../models/Escola.js';
+import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
+import Professor from "../models/Professor.js";
+import Escola from "../models/Escola.js";
 
 async function cadastrar({ nome, email, senha, codigoPermanente }) {
   const escola = await Escola.findOne({ codigoPermanente });
 
   if (!escola) {
-    const error = new Error('Código permanente da escola inválido.');
+    const error = new Error("Código permanente da escola inválido.");
     error.status = 400;
     throw error;
   }
@@ -14,7 +15,7 @@ async function cadastrar({ nome, email, senha, codigoPermanente }) {
   const professorExistente = await Professor.findOne({ email });
 
   if (professorExistente) {
-    const error = new Error('Este e-mail já está cadastrado.');
+    const error = new Error("Este e-mail já está cadastrado.");
     error.status = 409;
     throw error;
   }
@@ -25,8 +26,19 @@ async function cadastrar({ nome, email, senha, codigoPermanente }) {
     nome,
     email,
     senha: senhaHash,
-    escolas: [escola._id]
+    escolas: [escola._id],
   });
 }
 
-export default { cadastrar };
+async function obterPerfil(professorId) {
+  if (!mongoose.isValidObjectId(professorId)) return null;
+
+  return Professor.findById(professorId)
+    .select("nome email escolas")
+    .populate(
+      "escolas",
+      "nome codigoPermanente municipio endereco email contato",
+    );
+}
+
+export default { cadastrar, obterPerfil };

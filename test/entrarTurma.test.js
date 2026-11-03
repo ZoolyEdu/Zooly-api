@@ -1,25 +1,26 @@
-import assert from 'node:assert/strict';
-import { after, afterEach, before, beforeEach, test } from 'node:test';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import app from '../src/app.js';
-import Aluno from '../src/models/Aluno.js';
-import Turma from '../src/models/Turma.js';
+import assert from "node:assert/strict";
+import { after, afterEach, before, beforeEach, test } from "node:test";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import app from "../src/app.js";
+import Aluno from "../src/models/Aluno.js";
+import Turma from "../src/models/Turma.js";
 
-const segredoTeste = 'segredo-local-entrada-turma';
-const alunoNovoId = '507f1f77bcf86cd799439301';
-const alunoExistenteId = '507f1f77bcf86cd799439302';
-const turmaId = '507f1f77bcf86cd799439303';
-const outraTurmaId = '507f1f77bcf86cd799439304';
-const raAluno = 'RA-ENTRADA';
-const codigoTurma = 'TURMA-TESTE';
-const senhaTurma = 'senha-compartilhada';
+const segredoTeste = "segredo-local-entrada-turma";
+const alunoNovoId = "507f1f77bcf86cd799439301";
+const alunoExistenteId = "507f1f77bcf86cd799439302";
+const turmaId = "507f1f77bcf86cd799439303";
+const outraTurmaId = "507f1f77bcf86cd799439304";
+const raAluno = "RA-ENTRADA";
+const codigoTurma = "TURMA-TESTE";
+const senhaTurma = "senha-compartilhada";
 const hashTurma = await bcrypt.hash(senhaTurma, 4);
-const mensagemCredenciaisInvalidas = 'Código da turma ou senha inválidos.';
-const mensagemCamposObrigatorios = 'RA, código da turma e senha são obrigatórios.';
-const mensagemConfiguracaoAusente = 'Autenticação não configurada no servidor.';
-const mensagemConflitoTurma = 'Este RA já está associado a outra turma.';
-const mensagemConflitoCadastro = 'Este RA já está associado a outro cadastro.';
+const mensagemCredenciaisInvalidas = "Código da turma ou senha inválidos.";
+const mensagemCamposObrigatorios =
+  "RA, código da turma e senha são obrigatórios.";
+const mensagemConfiguracaoAusente = "Autenticação não configurada no servidor.";
+const mensagemConflitoTurma = "Este RA já está associado a outra turma.";
+const mensagemConflitoCadastro = "Este RA já está associado a outro cadastro.";
 
 const originaisModelos = new Map();
 const originaisAmbiente = new Map();
@@ -39,7 +40,7 @@ function query(value) {
     },
     then(resolve, reject) {
       return Promise.resolve(value).then(resolve, reject);
-    }
+    },
   };
 }
 
@@ -56,7 +57,7 @@ function alunoFixture(overrides = {}) {
     nomeCompleto: null,
     turma: turmaId,
     cadastroInicialConcluido: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -66,55 +67,61 @@ function turmaFixture(overrides = {}) {
     codigoPermanente: codigoTurma,
     arquivada: false,
     senhaAcessoHash: hashTurma,
-    ...overrides
+    ...overrides,
   };
 }
 
 function configurarMocks() {
   alunos = new Map();
   turmaAtual = turmaFixture();
-  modoCriacao = 'normal';
-  resultadoCorrida = 'mesma-turma';
+  modoCriacao = "normal";
+  resultadoCorrida = "mesma-turma";
   chamadas = {
     buscasTurma: [],
     projecoes: [],
     buscasAluno: [],
-    criacoes: []
+    criacoes: [],
   };
 
-  substituir(Turma, 'findOne', filtro => {
+  substituir(Turma, "findOne", (filtro) => {
     chamadas.buscasTurma.push(filtro);
-    const turma = turmaAtual &&
-      turmaAtual.codigoPermanente === filtro.codigoPermanente
-      ? turmaAtual
-      : null;
+    const turma =
+      turmaAtual && turmaAtual.codigoPermanente === filtro.codigoPermanente
+        ? turmaAtual
+        : null;
     return query(turma);
   });
 
-  substituir(Aluno, 'findOne', async filtro => {
+  substituir(Aluno, "findOne", async (filtro) => {
     chamadas.buscasAluno.push(filtro);
     return alunos.get(filtro.ra) ?? null;
   });
 
-  substituir(Aluno, 'create', async dados => {
+  substituir(Aluno, "create", async (dados) => {
     chamadas.criacoes.push(dados);
 
-    if (modoCriacao === 'duplicado') {
-      if (resultadoCorrida === 'mesma-turma') {
-        alunos.set(dados.ra, alunoFixture({
-          _id: alunoExistenteId,
-          nomeCompleto: 'Aluno Reaparecido',
-          cadastroInicialConcluido: true,
-          turma: turmaId
-        }));
-      } else if (resultadoCorrida === 'outra-turma') {
-        alunos.set(dados.ra, alunoFixture({
-          _id: alunoExistenteId,
-          turma: outraTurmaId
-        }));
+    if (modoCriacao === "duplicado") {
+      if (resultadoCorrida === "mesma-turma") {
+        alunos.set(
+          dados.ra,
+          alunoFixture({
+            _id: alunoExistenteId,
+            nomeCompleto: "Aluno Reaparecido",
+            cadastroInicialConcluido: true,
+            turma: turmaId,
+          }),
+        );
+      } else if (resultadoCorrida === "outra-turma") {
+        alunos.set(
+          dados.ra,
+          alunoFixture({
+            _id: alunoExistenteId,
+            turma: outraTurmaId,
+          }),
+        );
       }
 
-      const erro = new Error('duplicate key');
+      const erro = new Error("duplicate key");
       erro.code = 11000;
       throw erro;
     }
@@ -127,9 +134,9 @@ function configurarMocks() {
 
 async function postEntrarTurma(body) {
   return fetch(`${baseUrl}/aluno/entrar-turma`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -138,7 +145,7 @@ function dadosEntrada(overrides = {}) {
     ra: raAluno,
     codigoPermanente: codigoTurma,
     senha: senhaTurma,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -146,28 +153,29 @@ function assertErroCredenciais(resposta, corpo) {
   assert.equal(resposta.status, 401);
   assert.deepEqual(corpo, {
     sucesso: false,
-    mensagem: mensagemCredenciaisInvalidas
+    mensagem: mensagemCredenciaisInvalidas,
   });
 }
 
 before(async () => {
-  servidor = app.listen(0, '127.0.0.1');
-  await new Promise(resolve => servidor.once('listening', resolve));
+  servidor = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => servidor.once("listening", resolve));
   baseUrl = `http://127.0.0.1:${servidor.address().port}/api/auth`;
 });
 
 beforeEach(() => {
-  for (const nome of ['JWT_SECRET', 'JWT_EXPIRES_IN']) {
+  for (const nome of ["JWT_SECRET", "JWT_EXPIRES_IN", "JWT_EXPIRES_IN_ALUNO"]) {
     originaisAmbiente.set(nome, process.env[nome]);
   }
   process.env.JWT_SECRET = segredoTeste;
   delete process.env.JWT_EXPIRES_IN;
+  delete process.env.JWT_EXPIRES_IN_ALUNO;
   configurarMocks();
 });
 
 afterEach(() => {
   for (const [chave, metodoOriginal] of originaisModelos) {
-    const [nomeModelo, nomeMetodo] = chave.split('.');
+    const [nomeModelo, nomeMetodo] = chave.split(".");
     const modelo = { Aluno, Turma }[nomeModelo];
     modelo[nomeMetodo] = metodoOriginal;
   }
@@ -183,28 +191,33 @@ afterEach(() => {
 after(async () => {
   if (servidor) {
     await new Promise((resolve, reject) => {
-      servidor.close(erro => erro ? reject(erro) : resolve());
+      servidor.close((erro) => (erro ? reject(erro) : resolve()));
     });
   }
 });
 
-test('entrada válida cria aluno, mantém cadastro pendente e emite JWT verificável', async () => {
-  process.env.JWT_EXPIRES_IN = '30m';
+test("entrada válida cria aluno, mantém cadastro pendente e emite JWT verificável", async () => {
+  process.env.JWT_EXPIRES_IN_ALUNO = "30m";
 
-  const resposta = await postEntrarTurma(dadosEntrada({
-    ra: ` ${raAluno} `,
-    codigoPermanente: ` ${codigoTurma.toLowerCase()} `
-  }));
+  const resposta = await postEntrarTurma(
+    dadosEntrada({
+      ra: ` ${raAluno} `,
+      codigoPermanente: ` ${codigoTurma.toLowerCase()} `,
+    }),
+  );
   const corpo = await resposta.json();
   const payload = jwt.verify(corpo.token, segredoTeste);
 
   assert.equal(resposta.status, 201);
   assert.deepEqual(chamadas.buscasTurma, [{ codigoPermanente: codigoTurma }]);
-  assert.deepEqual(chamadas.projecoes, ['+senhaAcessoHash']);
+  assert.deepEqual(chamadas.projecoes, ["+senhaAcessoHash"]);
   assert.deepEqual(chamadas.buscasAluno, [{ ra: raAluno }]);
   assert.deepEqual(chamadas.criacoes, [{ ra: raAluno, turma: turmaId }]);
   assert.equal(corpo.sucesso, true);
-  assert.equal(corpo.mensagem, 'Entrada na turma realizada. Conclua seu cadastro inicial.');
+  assert.equal(
+    corpo.mensagem,
+    "Entrada na turma realizada. Conclua seu cadastro inicial.",
+  );
   assert.equal(corpo.alunoNovo, true);
   assert.equal(corpo.cadastroInicialPendente, true);
   assert.deepEqual(corpo.usuario, {
@@ -212,21 +225,21 @@ test('entrada válida cria aluno, mantém cadastro pendente e emite JWT verific�
     ra: raAluno,
     nome: null,
     turma: turmaId,
-    tipo: 'aluno'
+    tipo: "aluno",
   });
-  assert.equal(payload.tipo, 'aluno');
-  assert.equal(payload.nome, 'Aluno');
+  assert.equal(payload.tipo, "aluno");
+  assert.equal(payload.nome, "Aluno");
   assert.equal(payload.sub, alunoNovoId);
   assert.equal(payload.exp - payload.iat, 30 * 60);
   assert.equal(JSON.stringify(corpo).includes(hashTurma), false);
   assert.equal(JSON.stringify(corpo).includes(senhaTurma), false);
 });
 
-test('aluno já vinculado à mesma turma é reutilizado sem nova criação', async () => {
+test("aluno já vinculado à mesma turma é reutilizado sem nova criação", async () => {
   const existente = alunoFixture({
     _id: alunoExistenteId,
-    nomeCompleto: 'Aluno Existente',
-    cadastroInicialConcluido: true
+    nomeCompleto: "Aluno Existente",
+    cadastroInicialConcluido: true,
   });
   alunos.set(raAluno, existente);
 
@@ -234,15 +247,15 @@ test('aluno já vinculado à mesma turma é reutilizado sem nova criação', asy
   const corpo = await resposta.json();
 
   assert.equal(resposta.status, 200);
-  assert.equal(corpo.mensagem, 'Entrada na turma realizada com sucesso.');
+  assert.equal(corpo.mensagem, "Entrada na turma realizada com sucesso.");
   assert.equal(corpo.alunoNovo, false);
   assert.equal(corpo.cadastroInicialPendente, false);
   assert.equal(corpo.usuario.id, alunoExistenteId);
-  assert.equal(corpo.usuario.nome, 'Aluno Existente');
+  assert.equal(corpo.usuario.nome, "Aluno Existente");
   assert.equal(chamadas.criacoes.length, 0);
 });
 
-test('RA já associado a outra turma retorna conflito específico sem criar aluno', async () => {
+test("RA já associado a outra turma retorna conflito específico sem criar aluno", async () => {
   alunos.set(raAluno, alunoFixture({ turma: outraTurmaId }));
 
   const resposta = await postEntrarTurma(dadosEntrada());
@@ -250,48 +263,52 @@ test('RA já associado a outra turma retorna conflito específico sem criar alun
   assert.equal(resposta.status, 409);
   assert.deepEqual(await resposta.json(), {
     sucesso: false,
-    mensagem: mensagemConflitoTurma
+    mensagem: mensagemConflitoTurma,
   });
   assert.equal(chamadas.criacoes.length, 0);
 });
 
-test('após colisão 11000, aluno encontrado na mesma turma é reutilizado', async () => {
-  modoCriacao = 'duplicado';
-  resultadoCorrida = 'mesma-turma';
+test("após colisão 11000, aluno encontrado na mesma turma é reutilizado", async () => {
+  modoCriacao = "duplicado";
+  resultadoCorrida = "mesma-turma";
 
   const resposta = await postEntrarTurma(dadosEntrada());
   const corpo = await resposta.json();
 
   assert.equal(resposta.status, 200);
-  assert.equal(corpo.mensagem, 'Entrada na turma realizada com sucesso.');
+  assert.equal(corpo.mensagem, "Entrada na turma realizada com sucesso.");
   assert.equal(corpo.alunoNovo, false);
   assert.equal(corpo.usuario.id, alunoExistenteId);
   assert.equal(chamadas.criacoes.length, 1);
   assert.deepEqual(chamadas.buscasAluno, [{ ra: raAluno }, { ra: raAluno }]);
 });
 
-test('após colisão 11000, aluno ausente ou de outra turma recebe o conflito de cadastro', async () => {
-  for (const cenario of ['ausente', 'outra-turma']) {
+test("após colisão 11000, aluno ausente ou de outra turma recebe o conflito de cadastro", async () => {
+  for (const cenario of ["ausente", "outra-turma"]) {
     alunos = new Map();
-    modoCriacao = 'duplicado';
+    modoCriacao = "duplicado";
     resultadoCorrida = cenario;
 
     const resposta = await postEntrarTurma(dadosEntrada());
 
     assert.equal(resposta.status, 409, cenario);
-    assert.deepEqual(await resposta.json(), {
-      sucesso: false,
-      mensagem: mensagemConflitoCadastro
-    }, cenario);
+    assert.deepEqual(
+      await resposta.json(),
+      {
+        sucesso: false,
+        mensagem: mensagemConflitoCadastro,
+      },
+      cenario,
+    );
   }
 });
 
-test('turma inexistente, arquivada, sem hash ou senha incorreta retorna 401 genérico', async () => {
+test("turma inexistente, arquivada, sem hash ou senha incorreta retorna 401 genérico", async () => {
   const cenarios = [
-    ['turma inexistente', null, senhaTurma],
-    ['turma arquivada', turmaFixture({ arquivada: true }), senhaTurma],
-    ['hash ausente', turmaFixture({ senhaAcessoHash: null }), senhaTurma],
-    ['senha incorreta', turmaFixture(), 'senha-incorreta']
+    ["turma inexistente", null, senhaTurma],
+    ["turma arquivada", turmaFixture({ arquivada: true }), senhaTurma],
+    ["hash ausente", turmaFixture({ senhaAcessoHash: null }), senhaTurma],
+    ["senha incorreta", turmaFixture(), "senha-incorreta"],
   ];
 
   for (const [nome, turma, senha] of cenarios) {
@@ -299,25 +316,29 @@ test('turma inexistente, arquivada, sem hash ou senha incorreta retorna 401 gen�
     const resposta = await postEntrarTurma(dadosEntrada({ senha }));
 
     assert.equal(resposta.status, 401, nome);
-    assert.deepEqual(await resposta.json(), {
-      sucesso: false,
-      mensagem: mensagemCredenciaisInvalidas
-    }, nome);
+    assert.deepEqual(
+      await resposta.json(),
+      {
+        sucesso: false,
+        mensagem: mensagemCredenciaisInvalidas,
+      },
+      nome,
+    );
   }
 
   assert.equal(chamadas.criacoes.length, 0);
 });
 
-test('campos ausentes ou inválidos retornam HTTP 400', async () => {
+test("campos ausentes ou inválidos retornam HTTP 400", async () => {
   const cenarios = [
     {},
-    { ra: '', codigoPermanente: codigoTurma, senha: senhaTurma },
-    { ra: '   ', codigoPermanente: codigoTurma, senha: senhaTurma },
-    { ra: raAluno, codigoPermanente: '', senha: senhaTurma },
-    { ra: raAluno, codigoPermanente: '   ', senha: senhaTurma },
+    { ra: "", codigoPermanente: codigoTurma, senha: senhaTurma },
+    { ra: "   ", codigoPermanente: codigoTurma, senha: senhaTurma },
+    { ra: raAluno, codigoPermanente: "", senha: senhaTurma },
+    { ra: raAluno, codigoPermanente: "   ", senha: senhaTurma },
     { ra: raAluno, codigoPermanente: 123, senha: senhaTurma },
-    { ra: raAluno, codigoPermanente: codigoTurma, senha: '' },
-    { ra: raAluno, codigoPermanente: codigoTurma, senha: false }
+    { ra: raAluno, codigoPermanente: codigoTurma, senha: "" },
+    { ra: raAluno, codigoPermanente: codigoTurma, senha: false },
   ];
 
   for (const corpo of cenarios) {
@@ -326,7 +347,7 @@ test('campos ausentes ou inválidos retornam HTTP 400', async () => {
     assert.equal(resposta.status, 400);
     assert.deepEqual(await resposta.json(), {
       sucesso: false,
-      mensagem: mensagemCamposObrigatorios
+      mensagem: mensagemCamposObrigatorios,
     });
   }
 
@@ -335,14 +356,14 @@ test('campos ausentes ou inválidos retornam HTTP 400', async () => {
   assert.equal(chamadas.criacoes.length, 0);
 });
 
-test('corpo ausente, null ou vazio retorna HTTP 400 sem consultar models ou emitir token', async () => {
+test("corpo ausente, null ou vazio retorna HTTP 400 sem consultar models ou emitir token", async () => {
   for (const corpo of [undefined, null, {}]) {
     const resposta = await postEntrarTurma(corpo);
 
     assert.equal(resposta.status, 400);
     assert.deepEqual(await resposta.json(), {
       sucesso: false,
-      mensagem: mensagemCamposObrigatorios
+      mensagem: mensagemCamposObrigatorios,
     });
   }
 
@@ -351,7 +372,7 @@ test('corpo ausente, null ou vazio retorna HTTP 400 sem consultar models ou emit
   assert.equal(chamadas.criacoes.length, 0);
 });
 
-test('JWT_SECRET ausente retorna HTTP 500 antes de consultar os models', async () => {
+test("JWT_SECRET ausente retorna HTTP 500 antes de consultar os models", async () => {
   delete process.env.JWT_SECRET;
 
   const resposta = await postEntrarTurma(dadosEntrada());
@@ -359,28 +380,31 @@ test('JWT_SECRET ausente retorna HTTP 500 antes de consultar os models', async (
   assert.equal(resposta.status, 500);
   assert.deepEqual(await resposta.json(), {
     sucesso: false,
-    mensagem: mensagemConfiguracaoAusente
+    mensagem: mensagemConfiguracaoAusente,
   });
   assert.deepEqual(chamadas.buscasTurma, []);
   assert.deepEqual(chamadas.buscasAluno, []);
 });
 
-test('JWT usa validade padrão de uma hora quando JWT_EXPIRES_IN não está definido', async () => {
+test("entrada do aluno dura 2 horas por padrão e ignora a duração dos professores", async () => {
+  process.env.JWT_EXPIRES_IN = "8h";
   const resposta = await postEntrarTurma(dadosEntrada());
   const corpo = await resposta.json();
   const payload = jwt.verify(corpo.token, segredoTeste);
 
   assert.equal(resposta.status, 201);
-  assert.equal(payload.exp - payload.iat, 60 * 60);
+  assert.equal(payload.exp - payload.iat, 2 * 60 * 60);
 });
 
-test('senha enviada é comparada sem aparar os espaços', async () => {
-  const resposta = await postEntrarTurma(dadosEntrada({ senha: ` ${senhaTurma} ` }));
+test("senha enviada é comparada sem aparar os espaços", async () => {
+  const resposta = await postEntrarTurma(
+    dadosEntrada({ senha: ` ${senhaTurma} ` }),
+  );
 
   assert.equal(resposta.status, 401);
   assert.deepEqual(await resposta.json(), {
     sucesso: false,
-    mensagem: mensagemCredenciaisInvalidas
+    mensagem: mensagemCredenciaisInvalidas,
   });
   assert.equal(chamadas.criacoes.length, 0);
 });

@@ -1,24 +1,24 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
 export const etapasMissao = [
-  'ler_texto',
-  'completar_palavras',
-  'escutar_escrever',
-  'identificar_sons',
-  'responder_perguntas'
+  "ler_texto",
+  "completar_palavras",
+  "escutar_escrever",
+  "identificar_sons",
+  "responder_perguntas",
 ];
 
 const alternativaSchema = new Schema(
   {
     texto: {
       type: String,
-      required: [true, 'O texto da alternativa é obrigatório.'],
-      trim: true
-    }
+      required: [true, "O texto da alternativa é obrigatório."],
+      trim: true,
+    },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const questaoSchema = new Schema(
@@ -26,60 +26,73 @@ const questaoSchema = new Schema(
     tipo: {
       type: String,
       enum: {
-        values: ['multipla_escolha'],
-        message: 'O tipo de questão informado não é suportado.'
+        values: ["multipla_escolha"],
+        message: "O tipo de questão informado não é suportado.",
       },
-      default: 'multipla_escolha'
+      default: "multipla_escolha",
     },
     enunciado: {
       type: String,
-      required: [true, 'O enunciado da questão é obrigatório.'],
-      trim: true
+      required: [true, "O enunciado da questão é obrigatório."],
+      trim: true,
     },
     pontos: {
       type: Number,
-      min: [0, 'A pontuação da questão não pode ser negativa.'],
+      min: [0, "A pontuação da questão não pode ser negativa."],
       default: 0,
       validate: {
         validator: Number.isSafeInteger,
-        message: 'A pontuação da questão deve ser um inteiro não negativo.'
-      }
+        message: "A pontuação da questão deve ser um inteiro não negativo.",
+      },
     },
     alternativas: {
       type: [alternativaSchema],
       default: [],
       validate: {
-        validator: alternativas => Array.isArray(alternativas) && alternativas.length >= 2,
-        message: 'A questão deve ter pelo menos duas alternativas.'
-      }
+        validator: (alternativas) =>
+          Array.isArray(alternativas) && alternativas.length >= 2,
+        message: "A questão deve ter pelo menos duas alternativas.",
+      },
     },
     respostasCorretas: {
       type: [{ type: Schema.Types.ObjectId }],
-      default: []
-    }
+      default: [],
+    },
   },
-  { _id: true }
+  { _id: true },
 );
 
-questaoSchema.pre('validate', function validarRespostasCorretas() {
-  const alternativas = Array.isArray(this.alternativas) ? this.alternativas : [];
-  const respostasCorretas = Array.isArray(this.respostasCorretas) ? this.respostasCorretas : [];
-  const idsAlternativas = new Set(alternativas.map(alternativa => String(alternativa._id)));
+questaoSchema.pre("validate", function validarRespostasCorretas() {
+  const alternativas = Array.isArray(this.alternativas)
+    ? this.alternativas
+    : [];
+  const respostasCorretas = Array.isArray(this.respostasCorretas)
+    ? this.respostasCorretas
+    : [];
+  const idsAlternativas = new Set(
+    alternativas.map((alternativa) => String(alternativa._id)),
+  );
   const idsRespostas = respostasCorretas.map(String);
 
   if (idsRespostas.length === 0) {
-    this.invalidate('respostasCorretas', 'A questão deve ter pelo menos uma resposta correta.');
+    this.invalidate(
+      "respostasCorretas",
+      "A questão deve ter pelo menos uma resposta correta.",
+    );
     return;
   }
 
   if (new Set(idsRespostas).size !== idsRespostas.length) {
-    this.invalidate('respostasCorretas', 'As respostas corretas não podem se repetir.');
+    this.invalidate(
+      "respostasCorretas",
+      "As respostas corretas não podem se repetir.",
+    );
   }
 
-  if (idsRespostas.some(id => !idsAlternativas.has(id))) {
+  if (idsRespostas.some((id) => !idsAlternativas.has(id))) {
     this.invalidate(
-      'respostasCorretas',
-      'Todas as respostas corretas devem corresponder a alternativas da questão.'
+      "respostasCorretas",
+      "Todas as respostas corretas devem corresponder a alternativas da questão.",
     );
   }
 });
@@ -88,200 +101,226 @@ const origemHistoriaSchema = new Schema(
   {
     tipo: {
       type: String,
-      required: [true, 'Informe a origem da história.'],
+      required: [true, "Informe a origem da história."],
       enum: {
-        values: ['oficial', 'propria'],
-        message: 'A origem da história deve ser oficial ou própria.'
-      }
+        values: ["oficial", "propria"],
+        message: "A origem da história deve ser oficial ou própria.",
+      },
     },
     historiaId: {
       type: Schema.Types.ObjectId,
-      ref: 'Historia'
+      ref: "Historia",
     },
     texto: {
       type: String,
-      trim: true
-    }
+      trim: true,
+    },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const missaoSchema = new Schema(
   {
     etapas: {
-      type: [{
-        type: String,
-        enum: {
-          values: etapasMissao,
-          message: 'A missão contém uma etapa não suportada.'
-        }
-      }],
-      default: []
-    }
+      type: [
+        {
+          type: String,
+          enum: {
+            values: etapasMissao,
+            message: "A missão contém uma etapa não suportada.",
+          },
+        },
+      ],
+      default: [],
+    },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const habilidadeBnccSchema = new Schema(
   {
     codigo: {
       type: String,
-      required: [true, 'O código da habilidade BNCC é obrigatório.'],
-      trim: true
+      required: [true, "O código da habilidade BNCC é obrigatório."],
+      trim: true,
     },
     texto: {
       type: String,
-      required: [true, 'A descrição da habilidade BNCC é obrigatória.'],
-      trim: true
+      required: [true, "A descrição da habilidade BNCC é obrigatória."],
+      trim: true,
     },
     etapa: {
       type: String,
-      required: [true, 'A etapa da habilidade BNCC é obrigatória.'],
-      enum: ['EI', 'EF']
-    }
+      required: [true, "A etapa da habilidade BNCC é obrigatória."],
+      enum: ["EI", "EF"],
+    },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const atividadeSchema = new Schema(
   {
     turma: {
       type: Schema.Types.ObjectId,
-      ref: 'Turma',
-      required: [true, 'A turma da atividade é obrigatória.']
+      ref: "Turma",
+      required: [true, "A turma da atividade é obrigatória."],
     },
     professorCriador: {
       type: Schema.Types.ObjectId,
-      ref: 'Professor',
-      required: [true, 'O professor criador da atividade é obrigatório.']
+      ref: "Professor",
+      required: [true, "O professor criador da atividade é obrigatório."],
     },
     titulo: {
       type: String,
-      required: [true, 'O título da atividade é obrigatório.'],
-      trim: true
+      required: [true, "O título da atividade é obrigatório."],
+      trim: true,
     },
     ordem: {
       type: Number,
       default: 1,
-      min: [1, 'A ordem mínima da atividade deve ser 1.']
+      min: [1, "A ordem mínima da atividade deve ser 1."],
     },
     recompensaMoedas: {
       type: Number,
-      min: [1, 'A recompensa deve ser um inteiro positivo.'],
+      min: [1, "A recompensa deve ser um inteiro positivo."],
       validate: {
         validator: Number.isSafeInteger,
-        message: 'A recompensa deve ser um inteiro positivo.'
-      }
+        message: "A recompensa deve ser um inteiro positivo.",
+      },
     },
     historia: {
       type: origemHistoriaSchema,
-      required: [true, 'A história da atividade é obrigatória.']
+      required: [true, "A história da atividade é obrigatória."],
     },
     missao: {
       type: missaoSchema,
-      default: () => ({ etapas: [] })
+      default: () => ({ etapas: [] }),
     },
     habilidadesBncc: {
       type: [habilidadeBnccSchema],
-      default: []
+      default: [],
     },
     questoes: {
       type: [questaoSchema],
-      default: []
+      default: [],
     },
     pontuacaoTotal: {
       type: Number,
-      min: [0, 'A pontuação total não pode ser negativa.'],
+      min: [0, "A pontuação total não pode ser negativa."],
       default: 0,
       validate: {
         validator: Number.isSafeInteger,
-        message: 'A pontuação total deve ser um inteiro não negativo.'
-      }
+        message: "A pontuação total deve ser um inteiro não negativo.",
+      },
     },
     status: {
       type: String,
       enum: {
-        values: ['rascunho', 'publicada'],
-        message: 'O status deve ser rascunho ou publicada.'
+        values: ["rascunho", "publicada"],
+        message: "O status deve ser rascunho ou publicada.",
       },
-      default: 'rascunho'
+      default: "rascunho",
     },
     publicadoEm: {
       type: Date,
-      default: null
+      default: null,
     },
     prazo: {
       type: Date,
-      default: null
-    }
+      default: null,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 atividadeSchema.index({ turma: 1, ordem: 1 }, { unique: true });
 
-atividadeSchema.pre('validate', function validarOrigemHistoria() {
+atividadeSchema.pre("validate", function validarOrigemHistoria() {
   if (!this.historia) return;
 
   const { tipo, historiaId, texto } = this.historia;
   const temReferenciaOficial = historiaId !== undefined && historiaId !== null;
   const temTexto = texto !== undefined && texto !== null;
 
-  if (tipo === 'oficial') {
+  if (tipo === "oficial") {
     if (!temReferenciaOficial || temTexto) {
       this.invalidate(
-        'historia',
-        'Uma história oficial exige somente historiaId, sem texto próprio.'
+        "historia",
+        "Uma história oficial exige somente historiaId, sem texto próprio.",
       );
     }
     return;
   }
 
-  if (tipo === 'propria' && (temReferenciaOficial || !temTexto || !texto.trim())) {
+  if (
+    tipo === "propria" &&
+    (temReferenciaOficial || !temTexto || !texto.trim())
+  ) {
     this.invalidate(
-      'historia',
-      'Uma história própria exige texto não vazio e não aceita historiaId.'
+      "historia",
+      "Uma história própria exige texto não vazio e não aceita historiaId.",
     );
   }
 });
 
-atividadeSchema.pre('validate', function validarDataPublicacao() {
-  if (this.status === 'publicada' && !this.publicadoEm) {
-    this.invalidate('publicadoEm', 'Atividades publicadas devem registrar a data de publicação.');
+atividadeSchema.pre("validate", function validarDataPublicacao() {
+  if (this.status === "publicada" && !this.publicadoEm) {
+    this.invalidate(
+      "publicadoEm",
+      "Atividades publicadas devem registrar a data de publicação.",
+    );
   }
-  if (this.status === 'rascunho' && this.publicadoEm) {
-    this.invalidate('publicadoEm', 'Rascunhos não podem ter data de publicação.');
+  if (this.status === "rascunho" && this.publicadoEm) {
+    this.invalidate(
+      "publicadoEm",
+      "Rascunhos não podem ter data de publicação.",
+    );
   }
 });
 
-atividadeSchema.pre('validate', function calcularPontuacaoTotal() {
+atividadeSchema.pre("validate", function calcularPontuacaoTotal() {
   const total = (this.questoes ?? []).reduce(
-    (soma, questao) => soma + (Number.isSafeInteger(questao.pontos) ? questao.pontos : 0),
-    0
+    (soma, questao) =>
+      soma + (Number.isSafeInteger(questao.pontos) ? questao.pontos : 0),
+    0,
   );
   if (!Number.isSafeInteger(total)) {
-    this.invalidate('pontuacaoTotal', 'A soma das pontuações excede o limite permitido.');
+    this.invalidate(
+      "pontuacaoTotal",
+      "A soma das pontuações excede o limite permitido.",
+    );
     return;
   }
   this.pontuacaoTotal = total;
 });
 
-atividadeSchema.pre('validate', function validarDadosAssociados() {
+atividadeSchema.pre("validate", function validarDadosAssociados() {
   const etapas = this.missao?.etapas ?? [];
   if (new Set(etapas).size !== etapas.length) {
-    this.invalidate('missao.etapas', 'As etapas da missão não podem se repetir.');
+    this.invalidate(
+      "missao.etapas",
+      "As etapas da missão não podem se repetir.",
+    );
   }
 
-  const codigos = (this.habilidadesBncc ?? []).map(habilidade => habilidade.codigo);
+  const codigos = (this.habilidadesBncc ?? []).map(
+    (habilidade) => habilidade.codigo,
+  );
   if (new Set(codigos).size !== codigos.length) {
-    this.invalidate('habilidadesBncc', 'As habilidades BNCC não podem se repetir.');
+    this.invalidate(
+      "habilidadesBncc",
+      "As habilidades BNCC não podem se repetir.",
+    );
   }
 });
 
-atividadeSchema.pre('validate', function validarRecompensaNula() {
+atividadeSchema.pre("validate", function validarRecompensaNula() {
   if (this.recompensaMoedas === null) {
-    this.invalidate('recompensaMoedas', 'A recompensa deve ser um inteiro positivo.');
+    this.invalidate(
+      "recompensaMoedas",
+      "A recompensa deve ser um inteiro positivo.",
+    );
   }
 });
 
-export default mongoose.model('Atividade', atividadeSchema);
+export default mongoose.model("Atividade", atividadeSchema);

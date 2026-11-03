@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import dns, { Resolver } from 'node:dns';
+import { validarAmbienteBanco } from './ambienteBanco.js';
 
 const resolvedoresAlternativos = ['1.1.1.1', '8.8.8.8'];
 
@@ -55,6 +56,7 @@ export async function connectDatabase() {
   }
 
   const dbName = process.env.MONGODB_DB_NAME?.trim() || 'zooly';
+  validarAmbienteBanco(dbName);
 
   try {
     await prepararDnsAtlas(uri);

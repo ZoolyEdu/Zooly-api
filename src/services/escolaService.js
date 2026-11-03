@@ -1,19 +1,24 @@
-import Escola from '../models/Escola.js';
-import Professor from '../models/Professor.js';
-import Turma from '../models/Turma.js';
+import Escola from "../models/Escola.js";
+import Professor from "../models/Professor.js";
+import Turma from "../models/Turma.js";
 
 const camposPermitidos = [
-  'nome',
-  'cnpj',
-  'codigoPermanente',
-  'municipio',
-  'endereco',
-  'email',
-  'contato'
+  "nome",
+  "cnpj",
+  "codigoPermanente",
+  "municipio",
+  "endereco",
+  "email",
+  "contato",
 ];
 
 async function cadastrar(dados) {
-  return Escola.create(dados);
+  const permitidos = Object.fromEntries(
+    camposPermitidos
+      .filter((campo) => Object.hasOwn(dados, campo))
+      .map((campo) => [campo, dados[campo]]),
+  );
+  return Escola.create(permitidos);
 }
 
 async function listar() {
@@ -42,10 +47,10 @@ async function excluir(id) {
 
   const [temTurmas, temProfessores] = await Promise.all([
     Turma.exists({ escola: id }),
-    Professor.exists({ escolas: id })
+    Professor.exists({ escolas: id }),
   ]);
 
-  if (temTurmas || temProfessores) return { erro: 'escola-vinculada' };
+  if (temTurmas || temProfessores) return { erro: "escola-vinculada" };
 
   const excluida = await Escola.findByIdAndDelete(id);
   return { escola: excluida };

@@ -1,55 +1,62 @@
-import { randomBytes } from 'node:crypto';
-import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-import Escola from '../models/Escola.js';
-import Professor from '../models/Professor.js';
-import Turma from '../models/Turma.js';
+import { randomBytes } from "node:crypto";
+import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
+import Escola from "../models/Escola.js";
+import Professor from "../models/Professor.js";
+import Turma from "../models/Turma.js";
 
-const periodosPermitidos = ['Manhã', 'Tarde'];
-const mascotesPermitidos = ['papagaio', 'lagarto', 'cobra', 'sarue'];
+const periodosPermitidos = ["Manhã", "Tarde"];
+const mascotesPermitidos = ["papagaio", "lagarto", "cobra", "sarue"];
 
 function camposComplementaresValidos(body) {
-  return (!Object.hasOwn(body, 'periodo') || periodosPermitidos.includes(body.periodo)) &&
-    (!Object.hasOwn(body, 'mascote') || mascotesPermitidos.includes(body.mascote));
+  return (
+    (!Object.hasOwn(body, "periodo") ||
+      periodosPermitidos.includes(body.periodo)) &&
+    (!Object.hasOwn(body, "mascote") ||
+      mascotesPermitidos.includes(body.mascote))
+  );
 }
 
 async function obterProfessor(professorId) {
   if (!mongoose.isValidObjectId(professorId)) return null;
-  return Professor.findById(professorId).select('escolas');
+  return Professor.findById(professorId).select("escolas");
 }
 
+// Cada professor gerencia somente as turmas pelas quais é responsável.
 function professorTemAcesso(professor, turma) {
-  return professor.escolas.some(
-    escolaId => escolaId.toString() === turma.escola.toString()
-  );
+  return String(turma.professorResponsavel) === String(professor._id);
 }
 
 function gerarCodigoPermanente() {
-  return `TUR-${randomBytes(6).toString('hex').toUpperCase()}`;
+  return `TUR-${randomBytes(6).toString("hex").toUpperCase()}`;
 }
 
 async function cadastrar({ body, professorId }) {
   const { nome, escolaId, anoEscolar, periodo, mascote } = body;
 
   if (
-    typeof nome !== 'string' ||
+    typeof nome !== "string" ||
     !nome.trim() ||
-    typeof escolaId !== 'string' ||
+    typeof escolaId !== "string" ||
     !mongoose.isValidObjectId(escolaId) ||
     !Number.isInteger(anoEscolar) ||
     anoEscolar < 2000 ||
     anoEscolar > 2100
-  ) return { erro: 'dados-invalidos' };
-  if (!camposComplementaresValidos(body)) return { erro: 'dados-complementares-invalidos' };
+  )
+    return { erro: "dados-invalidos" };
+  if (!camposComplementaresValidos(body))
+    return { erro: "dados-complementares-invalidos" };
 
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
-  const escolaAutorizada = professor.escolas.some(id => id.toString() === escolaId);
-  if (!escolaAutorizada) return { erro: 'professor-sem-vinculo-escola' };
+  const escolaAutorizada = professor.escolas.some(
+    (id) => id.toString() === escolaId,
+  );
+  if (!escolaAutorizada) return { erro: "professor-sem-vinculo-escola" };
 
   const escola = await Escola.findById(escolaId);
-  if (!escola) return { erro: 'escola-nao-encontrada' };
+  if (!escola) return { erro: "escola-nao-encontrada" };
 
   let turma;
   for (let tentativa = 0; tentativa < 3; tentativa += 1) {
@@ -62,7 +69,7 @@ async function cadastrar({ body, professorId }) {
         escola: escola._id,
         professorResponsavel: professor._id,
         ...(periodo !== undefined ? { periodo } : {}),
-        ...(mascote !== undefined ? { mascote } : {})
+        ...(mascote !== undefined ? { mascote } : {}),
       });
       break;
     } catch (error) {
@@ -70,87 +77,101 @@ async function cadastrar({ body, professorId }) {
     }
   }
 
-  if (!turma) return { erro: 'codigo-nao-gerado' };
+  if (!turma) return { erro: "codigo-nao-gerado" };
   return { turma };
 }
 
 async function listar(professorId) {
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
   const turmas = await Turma.find({
-    escola: { $in: professor.escolas },
-    arquivada: false
+    professorResponsavel: professor._id,
+    arquivada: false,
   })
-    .populate('escola', 'nome codigoPermanente')
-    .populate('professorResponsavel', 'nome email')
+    .populate("escola", "nome codigoPermanente")
+    .populate("professorResponsavel", "nome email")
     .sort({ nome: 1 });
 
   return { turmas };
 }
 
 async function consultar({ turmaId, professorId }) {
-  if (!mongoose.isValidObjectId(turmaId)) return { erro: 'id-invalido' };
+  if (!mongoose.isValidObjectId(turmaId)) return { erro: "id-invalido" };
 
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
   const turma = await Turma.findOne({ _id: turmaId, arquivada: false });
-  if (!turma) return { erro: 'turma-nao-encontrada' };
-  if (!professorTemAcesso(professor, turma)) return { erro: 'acesso-nao-autorizado' };
+  if (!turma) return { erro: "turma-nao-encontrada" };
+  if (!professorTemAcesso(professor, turma))
+    return { erro: "acesso-nao-autorizado" };
 
-  await turma.populate('escola', 'nome codigoPermanente');
-  await turma.populate('professorResponsavel', 'nome email');
+  await turma.populate("escola", "nome codigoPermanente");
+  await turma.populate("professorResponsavel", "nome email");
   return { turma };
 }
 
 async function atualizar({ turmaId, professorId, body }) {
-  if (!mongoose.isValidObjectId(turmaId)) return { erro: 'id-invalido' };
+  if (!mongoose.isValidObjectId(turmaId)) return { erro: "id-invalido" };
 
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
   const turma = await Turma.findById(turmaId);
-  if (!turma || turma.arquivada) return { erro: 'turma-nao-encontrada' };
-  if (!professorTemAcesso(professor, turma)) return { erro: 'acesso-nao-autorizado' };
+  if (!turma || turma.arquivada) return { erro: "turma-nao-encontrada" };
+  if (!professorTemAcesso(professor, turma))
+    return { erro: "acesso-nao-autorizado" };
 
   const { nome, anoEscolar, periodo, mascote } = body;
 
-  if (!camposComplementaresValidos(body)) return { erro: 'dados-complementares-invalidos' };
+  if (!camposComplementaresValidos(body))
+    return { erro: "dados-complementares-invalidos" };
 
-  if (Object.hasOwn(body, 'nome')) {
-    if (typeof nome !== 'string' || !nome.trim()) return { erro: 'nome-invalido' };
+  if (Object.hasOwn(body, "nome")) {
+    if (typeof nome !== "string" || !nome.trim())
+      return { erro: "nome-invalido" };
     turma.nome = nome.trim();
   }
 
-  if (Object.hasOwn(body, 'anoEscolar')) {
-    if (!Number.isInteger(anoEscolar) || anoEscolar < 2000 || anoEscolar > 2100) {
-      return { erro: 'ano-escolar-invalido' };
+  if (Object.hasOwn(body, "anoEscolar")) {
+    if (
+      !Number.isInteger(anoEscolar) ||
+      anoEscolar < 2000 ||
+      anoEscolar > 2100
+    ) {
+      return { erro: "ano-escolar-invalido" };
     }
     turma.anoEscolar = anoEscolar;
   }
 
-  if (Object.hasOwn(body, 'periodo')) turma.periodo = periodo;
-  if (Object.hasOwn(body, 'mascote')) turma.mascote = mascote;
+  if (Object.hasOwn(body, "periodo")) turma.periodo = periodo;
+  if (Object.hasOwn(body, "mascote")) turma.mascote = mascote;
 
   await turma.save();
   return { turma };
 }
 
 async function definirSenhaAcesso({ turmaId, professorId, body }) {
-  if (!mongoose.isValidObjectId(turmaId)) return { erro: 'id-invalido' };
+  if (!mongoose.isValidObjectId(turmaId)) return { erro: "id-invalido" };
 
   const { senha } = body;
-  if (typeof senha !== 'string' || senha.trim().length < 4 || senha.trim().length > 20) {
-    return { erro: 'senha-invalida' };
+  if (
+    typeof senha !== "string" ||
+    senha.trim().length < 4 ||
+    senha.trim().length > 20
+  ) {
+    return { erro: "senha-invalida" };
   }
 
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
   const turma = await Turma.findById(turmaId);
-  if (!turma || turma.arquivada) return { erro: 'turma-ou-arquivada-nao-encontrada' };
-  if (!professorTemAcesso(professor, turma)) return { erro: 'acesso-nao-autorizado' };
+  if (!turma || turma.arquivada)
+    return { erro: "turma-ou-arquivada-nao-encontrada" };
+  if (!professorTemAcesso(professor, turma))
+    return { erro: "acesso-nao-autorizado" };
 
   turma.senhaAcessoHash = await bcrypt.hash(senha.trim(), 10);
   await turma.save();
@@ -158,18 +179,27 @@ async function definirSenhaAcesso({ turmaId, professorId, body }) {
 }
 
 async function arquivar({ turmaId, professorId }) {
-  if (!mongoose.isValidObjectId(turmaId)) return { erro: 'id-invalido' };
+  if (!mongoose.isValidObjectId(turmaId)) return { erro: "id-invalido" };
 
   const professor = await obterProfessor(professorId);
-  if (!professor) return { erro: 'professor-nao-encontrado' };
+  if (!professor) return { erro: "professor-nao-encontrado" };
 
   const turma = await Turma.findById(turmaId);
-  if (!turma || turma.arquivada) return { erro: 'turma-ja-arquivada-ou-inexistente' };
-  if (!professorTemAcesso(professor, turma)) return { erro: 'acesso-nao-autorizado' };
+  if (!turma || turma.arquivada)
+    return { erro: "turma-ja-arquivada-ou-inexistente" };
+  if (!professorTemAcesso(professor, turma))
+    return { erro: "acesso-nao-autorizado" };
 
   turma.arquivada = true;
   await turma.save();
   return { arquivada: true };
 }
 
-export default { cadastrar, listar, consultar, atualizar, definirSenhaAcesso, arquivar };
+export default {
+  cadastrar,
+  listar,
+  consultar,
+  atualizar,
+  definirSenhaAcesso,
+  arquivar,
+};

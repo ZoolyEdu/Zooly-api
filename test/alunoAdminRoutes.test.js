@@ -69,6 +69,7 @@ function turmaFixture(id, escola, overrides = {}) {
     _id: id,
     escola,
     codigoPermanente: id === turmaAId ? 'COD-A' : id === turmaOutraAId ? 'COD-A2' : 'COD-B',
+    professorResponsavel: escola === escolaAId ? professorAId : professorBId,
     arquivada: false,
     ...overrides
   };
@@ -346,7 +347,7 @@ test('POST /alunos mapeia duplicidade MongoDB para HTTP 409', async () => {
   });
 });
 
-test('GET /alunos/turma/:turmaId retorna os campos públicos sem RA e ordena por nome e ID', async () => {
+test('GET /alunos/turma/:turmaId retorna os campos públicos com RA e ordena por nome e ID', async () => {
   alunos.delete(alunoAId);
   alunos.set('507f1f77bcf86cd799439641', alunoFixture('507f1f77bcf86cd799439641', {
     ra: 'RA-C', nomeCompleto: 'Caio', turma: turmaAId, campoPrivado: 'não expor'
@@ -364,13 +365,13 @@ test('GET /alunos/turma/:turmaId retorna os campos públicos sem RA e ordena por
   assert.equal(resposta.status, 200);
   assert.equal(corpo.total, 3);
   assert.deepEqual(corpo.alunos.map(aluno => aluno.nomeCompleto), ['Ana', 'Ana', 'Caio']);
-  assert.ok(corpo.alunos.every(aluno => !Object.hasOwn(aluno, 'ra')));
+  assert.deepEqual(corpo.alunos.map(aluno => aluno.ra), ['RA-A', 'RA-B', 'RA-C']);
   assert.equal(corpo.alunos.some(aluno => String(aluno._id) === alunoBId), false);
   assert.deepEqual(chamadas.filtrosListagem, [{ turma: turmaAId }]);
-  assert.deepEqual(chamadas.projecoesAlunos, ['_id nomeCompleto sexo cadastroInicialConcluido turma createdAt']);
+  assert.deepEqual(chamadas.projecoesAlunos, ['_id ra nomeCompleto sexo cadastroInicialConcluido turma createdAt']);
   assert.deepEqual(chamadas.ordenacoesAlunos, [{ nomeCompleto: 1, _id: 1 }]);
   assert.ok(corpo.alunos.every(aluno =>
-    Object.keys(aluno).sort().join(',') === '_id,cadastroInicialConcluido,createdAt,nomeCompleto,sexo,turma'
+    Object.keys(aluno).sort().join(',') === '_id,cadastroInicialConcluido,createdAt,nomeCompleto,ra,sexo,turma'
   ));
   assert.equal(JSON.stringify(corpo).includes('campoPrivado'), false);
 });
