@@ -1,12 +1,12 @@
-import jwt from 'jsonwebtoken';
+import jwt from "jsonwebtoken";
 
 export default function autenticarToken(req, res, next) {
   const cabecalho = req.headers.authorization;
 
-  if (!cabecalho || !cabecalho.startsWith('Bearer ')) {
+  if (!cabecalho || !cabecalho.startsWith("Bearer ")) {
     return res.status(401).json({
       sucesso: false,
-      mensagem: 'Token de autenticação não informado.'
+      mensagem: "Token de autenticação não informado.",
     });
   }
 
@@ -15,24 +15,26 @@ export default function autenticarToken(req, res, next) {
   if (!process.env.JWT_SECRET) {
     return res.status(500).json({
       sucesso: false,
-      mensagem: 'Autenticação não configurada no servidor.'
+      mensagem: "Autenticação não configurada no servidor.",
     });
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
 
     req.usuario = {
       id: payload.sub,
       tipo: payload.tipo,
-      nome: payload.nome
+      nome: payload.nome,
     };
 
     return next();
   } catch {
     return res.status(401).json({
       sucesso: false,
-      mensagem: 'Token inválido ou expirado.'
+      mensagem: "Token inválido ou expirado.",
     });
   }
 }

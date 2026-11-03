@@ -1,34 +1,49 @@
-import { Router } from 'express';
-import autenticarToken from '../middlewares/autenticarToken.js';
-import autorizarPerfil from '../middlewares/autorizarPerfil.js';
-import alunoController from '../controllers/alunoController.js';
+import { Router } from "express";
+import autenticarToken from "../middlewares/autenticarToken.js";
+import autorizarPerfil from "../middlewares/autorizarPerfil.js";
+import alunoController from "../controllers/alunoController.js";
 
 const router = Router();
 
-// Este caminho vem antes de /:alunoId para que "me" não seja tratado como um ID.
-router.put('/me/avatar', autenticarToken, autorizarPerfil('aluno'), alunoController.selecionarAvatar);
+router.get(
+  "/me",
+  autenticarToken,
+  autorizarPerfil("aluno"),
+  alunoController.obterPerfil,
+);
+router.put(
+  "/me/avatar",
+  autenticarToken,
+  autorizarPerfil("aluno"),
+  alunoController.selecionarAvatar,
+);
 
-router.post('/', autenticarToken, autorizarPerfil('professor'), alunoController.cadastrar);
+router.post(
+  "/",
+  autenticarToken,
+  autorizarPerfil("professor"),
+  alunoController.cadastrar,
+);
 
 router.get(
-  '/turma/:turmaId',
+  "/turma/:turmaId",
   autenticarToken,
-  autorizarPerfil('professor'),
-  alunoController.listarPorTurma
+  autorizarPerfil("professor"),
+  alunoController.listarPorTurma,
 );
 
 router.put(
-  '/:alunoId',
+  "/:alunoId",
   autenticarToken,
-  autorizarPerfil('professor'),
-  alunoController.atualizar
+  autorizarPerfil("professor"),
+  alunoController.atualizar,
 );
 
 router.patch(
-  '/cadastro-inicial',
+  "/cadastro-inicial",
   autenticarToken,
-  autorizarPerfil('aluno'),
-  alunoController.concluirCadastroInicial
+  autorizarPerfil("aluno"),
+  alunoController.concluirCadastroInicial,
 );
 
 export default router;

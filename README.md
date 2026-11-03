@@ -1,4 +1,3 @@
-readme
 # Zooly API
 
 <p align="center">
@@ -126,9 +125,13 @@ Depois, abra o arquivo `.env` e configure os valores necessários para seu ambie
 | `MONGODB_URI` | String de conexão com o MongoDB. |
 | `PORT` | Porta utilizada pelo servidor. |
 | `JWT_SECRET` | Segredo utilizado para assinar e verificar os tokens JWT. |
-| `JWT_EXPIRES_IN` | Tempo de validade dos tokens. |
+| `MONGODB_DB_NAME` | Nome do banco. O padrão é `zooly`. |
+| `CORS_ORIGINS` | Origens de navegador permitidas, separadas por vírgula. Veja [docs/cors.md](./docs/cors.md). |
+| `JWT_EXPIRES_IN` | Validade dos tokens de professor e administrador. O padrão é 1h; em uso, 8h. |
+| `JWT_EXPIRES_IN_ALUNO` | Validade dos tokens de aluno. O padrão é 2h. |
 | `ADMIN_EMAIL` | E-mail da conta administrativa configurada. |
 | `ADMIN_SENHA_HASH` | Hash da senha da conta administrativa. |
+| `ZOOLY_AMBIENTE` | Somente `demo`, no ambiente de demonstração. Não defina em produção. |
 | `MOEDAS_RECOMPENSA_CONCLUSAO` | Quantidade de moedas concedidas pela conclusão de uma atividade. É opcional; quando não configurada, a aplicação utiliza o valor padrão de 10 moedas. |
 
 Ajuste os valores conforme o ambiente local. Não publique o arquivo `.env`, senhas, strings de conexão ou segredos no repositório. Mantenha credenciais reais fora do `.env.example`.
@@ -170,10 +173,11 @@ Os recursos estão organizados pelos seguintes prefixos:
 | Prefixo | Recurso |
 |---|---|
 | `/api/auth` | Autenticação e entrada de usuários. |
-| `/api/professores` | Cadastro de professores. |
+| `/api/professores` | Cadastro público de professores e perfil do professor autenticado (`GET /me`). |
+| `/api/admin/professores` | Gerenciamento administrativo de professores. |
 | `/api/escolas` | Gerenciamento administrativo de escolas. |
-| `/api/turmas` | Gerenciamento de turmas. |
-| `/api/alunos` | Gerenciamento de alunos e avatares. |
+| `/api/turmas` | Gerenciamento de turmas, restrito ao professor responsável. |
+| `/api/alunos` | Gerenciamento de alunos, restrito ao professor responsável pela turma, e avatares. |
 | `/api/historias` | Consulta de histórias. |
 | `/api/atividades` | Criação, edição, publicação e consulta de atividades. |
 | `/api/progresso` | Registro de respostas e acompanhamento do progresso. |
@@ -183,6 +187,12 @@ Os recursos estão organizados pelos seguintes prefixos:
 | `/api/bncc` | Consulta de conteúdos da BNCC. |
 
 Os endpoints protegidos exigem autenticação e o perfil autorizado para a operação. Os requisitos específicos são definidos pelos middlewares e pelas rotas correspondentes.
+
+## Documentação
+
+- [Integração do aplicativo mobile](./docs/integracao-mobile.md): fluxo e endpoints do aluno.
+- [Publicação](./docs/publicacao.md): variáveis, ordem, testes e ambiente de demonstração.
+- [Atividades](./docs/atividades.md), [moedas](./docs/moedas.md), [CORS](./docs/cors.md) e [administração de professores](./docs/professores-administracao.md).
 
 ## Relatório semanal de desempenho
 
@@ -295,3 +305,5 @@ Projeto acadêmico em desenvolvimento no curso de Desenvolvimento de Software Mu
 A aplicacao usa o banco `zooly` por padrao, configurado explicitamente pela opcao `dbName` do Mongoose. Defina `MONGODB_DB_NAME` para substituir esse nome; a opcao prevalece sobre o nome no caminho de `MONGODB_URI`.
 
 Os testes automatizados nao carregam `.env` nem conectam a um MongoDB real. Para testes de integracao locais, use uma instancia e credenciais isoladas e defina `MONGODB_DB_NAME=zooly_test` junto de uma `MONGODB_URI` dessa instancia. Nunca reutilize a URI de producao.
+
+O banco `zooly_demo` e exclusivo do ambiente de demonstracao local, descrito em [docs/publicacao.md](./docs/publicacao.md#ambiente-de-demonstração-local).
