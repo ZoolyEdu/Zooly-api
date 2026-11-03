@@ -1,6 +1,6 @@
 
 import { Router } from 'express';
-import { limitarLogin } from '../middlewares/limitarTentativas.js';
+import { limitarCadastro, limitarLogin } from '../middlewares/limitarTentativas.js';
 import authController from '../controllers/authController.js';
 
 const router = Router();
@@ -16,5 +16,8 @@ router.post('/aluno/login', limitarLogin, authController.loginAluno);
 
 // Entrada e cadastro do aluno por código permanente da turma
 router.post('/aluno/entrar-turma', limitarLogin, authController.entrarTurma);
+
+// Primeiro acesso do aluno: cadastro sem senha (não devolve token)
+router.post('/aluno/cadastro', limitarCadastro, authController.cadastrarAluno);
 
 export default router;

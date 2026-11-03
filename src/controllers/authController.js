@@ -229,4 +229,77 @@ async function entrarTurma(req, res, next) {
   }
 }
 
-export default { loginProfessor, loginAdmin, loginAluno, entrarTurma };
+// Primeiro acesso do aluno: cadastro sem senha. Para entrar depois, o aluno
+// usa o login normal (RA + senha de acesso da turma).
+async function cadastrarAluno(req, res, next) {
+  try {
+    const { ra, codigoPermanente, nomeCompleto, sexo } = req.body ?? {};
+
+    if (
+      typeof ra !== "string" ||
+      !ra.trim() ||
+      typeof codigoPermanente !== "string" ||
+      !codigoPermanente.trim() ||
+      typeof nomeCompleto !== "string" ||
+      !nomeCompleto.trim() ||
+      !["feminino", "masculino", "nao_informado"].includes(sexo)
+    ) {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: "Informe RA, nome completo, código da turma e sexo válido.",
+      });
+    }
+
+    const resultado = await authService.cadastrarAluno({
+      ra,
+      codigoPermanente,
+      nomeCompleto,
+      sexo,
+    });
+
+    if (resultado.erro === "turma-nao-encontrada") {
+      return res.status(404).json({
+        sucesso: false,
+        mensagem: "Código da turma não encontrado. Confira com sua professora.",
+      });
+    }
+
+    if (resultado.erro === "turma-sem-senha") {
+      return res.status(409).json({
+        sucesso: false,
+        mensagem: "Peça à sua professora para liberar a turma.",
+      });
+    }
+
+    if (resultado.erro === "ra-ja-cadastrado") {
+      return res.status(409).json({
+        sucesso: false,
+        mensagem: "Este RA já tem cadastro. Entre com seu RA e a senha da turma.",
+      });
+    }
+
+    const { aluno } = resultado;
+
+    return res.status(201).json({
+      sucesso: true,
+      mensagem: "Cadastro realizado! Agora entre com seu RA e a senha da turma.",
+      aluno: {
+        id: aluno._id,
+        ra: aluno.ra,
+        nomeCompleto: aluno.nomeCompleto,
+        sexo: aluno.sexo,
+        turma: aluno.turma,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export default {
+  loginProfessor,
+  loginAdmin,
+  loginAluno,
+  entrarTurma,
+  cadastrarAluno,
+};
