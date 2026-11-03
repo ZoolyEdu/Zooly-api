@@ -1,13 +1,10 @@
 import atividadeService from "../services/atividadeService.js";
-
-function rejeitar(res, status, mensagem) {
-  return res.status(status).json({ sucesso: false, mensagem });
-}
+import { enviarErro } from "../utils/erros.js";
 
 function erroResultado(res, erro, mensagens) {
   const resultado = mensagens[erro];
   if (!resultado) return null;
-  return rejeitar(res, resultado[0], resultado[1]);
+  return enviarErro(res, resultado[0], resultado[1]);
 }
 
 async function criar(req, res, next) {
@@ -44,6 +41,10 @@ async function criar(req, res, next) {
         "O identificador da história oficial é inválido.",
       ],
       "historia-nao-encontrada": [404, "História oficial não encontrada."],
+      "historia-arquivada": [
+        409,
+        "A história escolhida está arquivada. Reative-a no Banco de Histórias.",
+      ],
       "ordem-ocupada": [409, "A ordem informada já está ocupada nesta turma."],
       "ordem-nao-reservada": [
         409,
@@ -66,7 +67,7 @@ async function listarPublicadas(req, res, next) {
   try {
     const resultado = await atividadeService.listarPublicadas(req.usuario.id);
     if (resultado.erro === "professor-nao-encontrado") {
-      return rejeitar(res, 404, "Professor não encontrado.");
+      return enviarErro(res, 404, "Professor não encontrado.");
     }
     return res
       .status(200)
@@ -80,7 +81,7 @@ async function listarDoProfessor(req, res, next) {
   try {
     const resultado = await atividadeService.listarDoProfessor(req.usuario.id);
     if (resultado.erro === "professor-nao-encontrado") {
-      return rejeitar(res, 401, "Professor não encontrado.");
+      return enviarErro(res, 401, "Professor não encontrado.");
     }
     return res
       .status(200)
@@ -219,6 +220,10 @@ async function atualizar(req, res, next) {
         "O identificador da história oficial é inválido.",
       ],
       "historia-nao-encontrada": [404, "História oficial não encontrada."],
+      "historia-arquivada": [
+        409,
+        "A história escolhida está arquivada. Reative-a no Banco de Histórias.",
+      ],
       "ordem-ocupada": [409, "A ordem informada já está ocupada nesta turma."],
     });
     if (erro) return erro;

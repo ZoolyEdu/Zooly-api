@@ -8,6 +8,22 @@ const segredoTeste = "segredo-local-historias-sem-dados-reais";
 const professorId = "507f1f77bcf86cd799439210";
 const historiaAId = "507f1f77bcf86cd799439201";
 const historiaBId = "507f1f77bcf86cd799439202";
+const CAMPOS_PUBLICOS = [
+  "_id",
+  "conteudo",
+  "createdAt",
+  "descricao",
+  "editavel",
+  "faixaEtaria",
+  "nota",
+  "objetivosPedagogicos",
+  "origem",
+  "status",
+  "tema",
+  "titulo",
+  "totalPerguntas",
+  "updatedAt",
+];
 const originais = new Map();
 let servidor;
 let baseUrl;
@@ -139,13 +155,15 @@ test("professor autenticado lista histórias com os campos públicos e quantidad
     corpo.historias.map((item) => item._id),
     [historiaAId, historiaBId],
   );
-  assert.deepEqual(Object.keys(corpo.historias[0]).sort(), [
-    "_id",
-    "conteudo",
-    "titulo",
-  ]);
-  assert.deepEqual(chamadas.projecoes, ["_id titulo conteudo"]);
-  assert.deepEqual(chamadas.ordenacoes, [{ titulo: 1 }]);
+  // Contrato do Banco de Histórias: os campos antigos (_id, titulo, conteudo) continuam,
+  // acrescidos dos dados pedagógicos e de origem. A lista nunca traz perguntas.
+  assert.deepEqual(Object.keys(corpo.historias[0]).sort(), CAMPOS_PUBLICOS);
+  assert.equal(corpo.historias[0].titulo, "A aventura");
+  assert.equal(corpo.historias[0].conteudo, "Uma história de teste.");
+  // Documentos antigos, sem origem, são tratados como histórias globais do Zooly.
+  assert.equal(corpo.historias[0].origem, "zooly");
+  assert.equal(corpo.historias[0].editavel, false);
+  assert.deepEqual(chamadas.ordenacoes, [{ titulo: 1, _id: 1 }]);
 });
 
 test("professor autenticado consulta história existente pelo identificador", async () => {
@@ -154,13 +172,11 @@ test("professor autenticado consulta história existente pelo identificador", as
 
   assert.equal(resposta.status, 200);
   assert.equal(corpo.sucesso, true);
-  assert.deepEqual(corpo.historia, {
-    _id: historiaAId,
-    titulo: "A aventura",
-    conteudo: "Uma história de teste.",
-  });
+  assert.equal(corpo.historia._id, historiaAId);
+  assert.equal(corpo.historia.titulo, "A aventura");
+  assert.equal(corpo.historia.conteudo, "Uma história de teste.");
+  assert.deepEqual(corpo.historia.perguntas, []);
   assert.deepEqual(chamadas.idsConsultados, [historiaAId]);
-  assert.deepEqual(chamadas.projecoes, ["_id titulo conteudo"]);
 });
 
 test("identificador válido sem história correspondente retorna 404", async () => {
@@ -193,9 +209,13 @@ test("respostas não expõem atributos administrativos ou campos extras", async 
   assert.equal(serializado.includes("createdBy"), false);
   assert.equal(serializado.includes("dadosAdministrativos"), false);
   assert.equal(serializado.includes("não deveria existir na resposta"), false);
-  for (const item of [...corpoLista.historias, corpoDetalhe.historia]) {
-    assert.deepEqual(Object.keys(item).sort(), ["_id", "conteudo", "titulo"]);
+  for (const item of corpoLista.historias) {
+    assert.deepEqual(Object.keys(item).sort(), CAMPOS_PUBLICOS);
   }
+  assert.deepEqual(
+    Object.keys(corpoDetalhe.historia).sort(),
+    [...CAMPOS_PUBLICOS, "perguntas"].sort(),
+  );
 });
 
 test("professor recebe 200 e lista vazia quando não há histórias cadastradas", async () => {

@@ -10,5 +10,9 @@ router.get("/turmas/:turmaId", desempenhoController.turma);
 router.get("/turmas/:turmaId/semanal", desempenhoController.semanal);
 router.get("/turmas/:turmaId/semanal/pdf", desempenhoController.semanalPdf);
 router.get("/alunos/:alunoId", desempenhoController.aluno);
+router.get(
+  "/alunos/:alunoId/tentativas",
+  desempenhoController.tentativasAluno,
+);
 
 export default router;

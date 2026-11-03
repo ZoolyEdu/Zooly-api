@@ -4,6 +4,12 @@ import Historia from "../models/Historia.js";
 import ProgressoAtividade from "../models/ProgressoAtividade.js";
 import Aluno from "../models/Aluno.js";
 import { concluirAtividadeComRecompensa } from "./moedaService.js";
+import {
+  abrirOuRetomarTentativa,
+  listarTentativas,
+  registrarRespostas,
+  resumoTentativa,
+} from "./tentativaService.js";
 
 function ehObjeto(valor) {
   return valor !== null && typeof valor === "object" && !Array.isArray(valor);
@@ -153,6 +159,20 @@ async function iniciar({ atividadeId, alunoId }) {
   if (!(await validarDesbloqueioSequencial(alunoId, atividade)))
     return { erro: "atividade-bloqueada-inicio" };
 
+  const resultado = await obterOuCriarProgresso(alunoId, atividadeId);
+  // Abre a próxima tentativa ou retoma a que ficou em andamento.
+  const { tentativa, retomada } = await abrirOuRetomarTentativa({
+    progresso: resultado.progresso,
+    progressoNovo: !resultado.existente,
+  });
+  return {
+    ...resultado,
+    tentativa: resumoTentativa(tentativa),
+    tentativaRetomada: retomada,
+  };
+}
+
+async function obterOuCriarProgresso(alunoId, atividadeId) {
   const existente = await ProgressoAtividade.findOne({
     aluno: alunoId,
     atividade: atividadeId,
@@ -169,16 +189,12 @@ async function iniciar({ atividadeId, alunoId }) {
     return { progresso, existente: false };
   } catch (error) {
     if (error.code === 11000) {
-      try {
-        const progressoExistente = await ProgressoAtividade.findOne({
-          aluno: alunoId,
-          atividade: atividadeId,
-        });
-        if (progressoExistente)
-          return { progresso: progressoExistente, existente: true };
-      } catch (erroConsulta) {
-        throw erroConsulta;
-      }
+      const progressoExistente = await ProgressoAtividade.findOne({
+        aluno: alunoId,
+        atividade: atividadeId,
+      });
+      if (progressoExistente)
+        return { progresso: progressoExistente, existente: true };
     }
     throw error;
   }
@@ -202,13 +218,16 @@ async function salvarRespostas({ atividadeId, alunoId, body }) {
   });
   if (!progresso) return { erro: "atividade-nao-iniciada" };
 
-  progresso.respostas = body.respostas.map((resposta) => ({
-    questaoId: resposta.questaoId,
-    alternativasSelecionadas: resposta.alternativasSelecionadas,
-  }));
-  progresso.respostasRegistradasEm = new Date();
-  await progresso.save();
-  return { progresso };
+  // As respostas vão para a tentativa em andamento; tentativas concluídas não mudam.
+  const resultado = await registrarRespostas({
+    progresso,
+    respostas: body.respostas,
+  });
+  if (resultado.erro) return resultado;
+  return {
+    progresso: resultado.progresso,
+    tentativa: resumoTentativa(resultado.tentativa),
+  };
 }
 
 async function concluir({ atividadeId, alunoId }) {
@@ -220,12 +239,33 @@ async function concluir({ atividadeId, alunoId }) {
 
   if (!(await validarDesbloqueioSequencial(alunoId, atividade)))
     return { erro: "atividade-bloqueada-conclusao" };
+  const resultado = await concluirAtividadeComRecompensa({
+    alunoId,
+    atividadeId,
+    recompensaAtividade: atividade.recompensaMoedas,
+  });
   return {
-    resultado: await concluirAtividadeComRecompensa({
-      alunoId,
-      atividadeId,
-      recompensaAtividade: atividade.recompensaMoedas,
-    }),
+    resultado: { ...resultado, tentativa: resumoTentativa(resultado.tentativa) },
+  };
+}
+
+// Histórico do próprio aluno (identidade do token). Não expõe gabarito nem correção.
+async function listarTentativasDaAtividade({ atividadeId, alunoId }) {
+  const atividade = await buscarAtividadePublicada(atividadeId);
+  if (!atividade) return { erro: "atividade-nao-encontrada" };
+
+  const vinculo = await validarVinculoAlunoTurma(alunoId, atividade.turma);
+  if (vinculo.erro) return vinculo;
+
+  const tentativas = await listarTentativas({
+    aluno: alunoId,
+    atividade: atividadeId,
+  });
+  const oficial = tentativas.find((tentativa) => tentativa.oficial);
+  return {
+    totalTentativas: tentativas.length,
+    tentativaOficial: oficial?._id ?? null,
+    tentativas: tentativas.map(resumoTentativa),
   };
 }
 
@@ -265,10 +305,19 @@ async function obterConteudo({ atividadeId, alunoId }) {
   if (!(await validarDesbloqueioSequencial(alunoId, atividade)))
     return { erro: "atividade-bloqueada-inicio" };
 
+  // A cópia gravada na atividade tem prioridade; só atividades antigas (sem cópia)
+  // leem a história do banco pelo historiaId.
+  const copia = atividade.historia?.textoCopia
+    ? {
+        titulo: atividade.historia.tituloCopia ?? null,
+        conteudo: atividade.historia.textoCopia,
+      }
+    : null;
   const historia =
-    atividade.historia?.tipo === "oficial"
+    copia ??
+    (atividade.historia?.tipo === "oficial"
       ? await Historia.findById(atividade.historia.historiaId)
-      : null;
+      : null);
 
   return {
     atividade: {
@@ -319,4 +368,5 @@ export default {
   listarDoAluno,
   obterConteudo,
   obterPorAtividade,
+  listarTentativasDaAtividade,
 };

@@ -4,16 +4,13 @@ import {
   listarMovimentacoes,
   validarAlunoMoedas,
 } from "../services/moedaService.js";
-
-function erro(res, status, mensagem) {
-  return res.status(status).json({ sucesso: false, mensagem });
-}
+import { enviarErro } from "../utils/erros.js";
 
 function responderErroAluno(res, codigo) {
   if (codigo === "identidade-invalida")
-    return erro(res, 401, "Identidade do aluno inválida.");
+    return enviarErro(res, 401, "Identidade do aluno inválida.");
   if (codigo === "aluno-nao-encontrado")
-    return erro(res, 404, "Aluno não encontrado.");
+    return enviarErro(res, 404, "Aluno não encontrado.");
   return false;
 }
 
@@ -47,7 +44,7 @@ async function movimentacoes(req, res, next) {
       pagina < 1 ||
       !Number.isSafeInteger((pagina - 1) * limite)
     ) {
-      return erro(
+      return enviarErro(
         res,
         400,
         "Informe página positiva e limite inteiro entre 1 e 100.",
@@ -73,7 +70,7 @@ async function gastos(req, res, next) {
         (campo) => !["quantidade", "motivo"].includes(campo),
       )
     ) {
-      return erro(res, 400, "Envie somente quantidade e motivo.");
+      return enviarErro(res, 400, "Envie somente quantidade e motivo.");
     }
 
     const alunoId = req.usuario.id;

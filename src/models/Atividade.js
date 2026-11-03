@@ -115,6 +115,23 @@ const origemHistoriaSchema = new Schema(
       type: String,
       trim: true,
     },
+    // História própria criada a partir do Banco de Histórias: só registra a origem.
+    // O texto usado é sempre `texto` (cópia independente).
+    bancoHistoriaId: {
+      type: Schema.Types.ObjectId,
+      ref: "Historia",
+    },
+    // Cópia feita pelo servidor quando a atividade usa uma história do banco (`tipo: oficial`).
+    // O aluno recebe esta cópia: editar a história depois não altera a atividade.
+    // Atividades antigas sem cópia continuam lendo a história pelo `historiaId`.
+    tituloCopia: {
+      type: String,
+      trim: true,
+    },
+    textoCopia: {
+      type: String,
+      trim: true,
+    },
   },
   { _id: false },
 );
@@ -238,12 +255,14 @@ atividadeSchema.index({ turma: 1, ordem: 1 }, { unique: true });
 atividadeSchema.pre("validate", function validarOrigemHistoria() {
   if (!this.historia) return;
 
-  const { tipo, historiaId, texto } = this.historia;
-  const temReferenciaOficial = historiaId !== undefined && historiaId !== null;
-  const temTexto = texto !== undefined && texto !== null;
+  const { tipo, historiaId, texto, bancoHistoriaId, textoCopia } =
+    this.historia;
+  const preenchido = (valor) => valor !== undefined && valor !== null;
+  const temReferenciaOficial = preenchido(historiaId);
+  const temTexto = preenchido(texto);
 
   if (tipo === "oficial") {
-    if (!temReferenciaOficial || temTexto) {
+    if (!temReferenciaOficial || temTexto || preenchido(bancoHistoriaId)) {
       this.invalidate(
         "historia",
         "Uma história oficial exige somente historiaId, sem texto próprio.",
@@ -254,7 +273,10 @@ atividadeSchema.pre("validate", function validarOrigemHistoria() {
 
   if (
     tipo === "propria" &&
-    (temReferenciaOficial || !temTexto || !texto.trim())
+    (temReferenciaOficial ||
+      !temTexto ||
+      !texto.trim() ||
+      preenchido(textoCopia))
   ) {
     this.invalidate(
       "historia",

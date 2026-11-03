@@ -7,6 +7,7 @@ import Aluno from "../src/models/Aluno.js";
 import Atividade from "../src/models/Atividade.js";
 import ProgressoAtividade from "../src/models/ProgressoAtividade.js";
 import MovimentacaoMoeda from "../src/models/MovimentacaoMoeda.js";
+import TentativaAtividade from "../src/models/TentativaAtividade.js";
 
 const segredoTeste = "segredo-local-progresso-sem-dados-reais";
 const atividadeId = "507f1f77bcf86cd799439401";
@@ -23,6 +24,7 @@ const alternativaCId = "507f1f77bcf86cd799439408";
 const originais = new Map();
 let atividades;
 let progressos;
+let tentativas;
 let alunos;
 let movimentacoes;
 let filaTransacaoMoedas;
@@ -81,6 +83,7 @@ function instalarMocks() {
   ]);
 
   progressos = new Map();
+  tentativas = [];
 
   alunos = new Map([
     [alunoAId, { _id: alunoAId, turma: turmaAId }],
@@ -173,6 +176,82 @@ function instalarMocks() {
       return doc;
     });
   });
+
+  substituir(ProgressoAtividade, "updateOne", async (filtro, atualizacao) => {
+    const doc = [...progressos.values()].find(
+      (p) =>
+        String(p._id) === String(filtro._id) &&
+        (!filtro.status || p.status === filtro.status),
+    );
+    if (doc) Object.assign(doc, atualizacao.$set);
+    return { matchedCount: doc ? 1 : 0, modifiedCount: doc ? 1 : 0 };
+  });
+
+  // Coleção de tentativas em memória, com as mesmas restrições dos índices únicos.
+  const filtrarTentativas = (filtro = {}) =>
+    tentativas.filter(
+      (t) =>
+        (!filtro._id || String(t._id) === String(filtro._id)) &&
+        (!filtro.aluno || String(t.aluno) === String(filtro.aluno)) &&
+        (!filtro.atividade ||
+          (filtro.atividade.$in
+            ? filtro.atividade.$in.some((id) => String(id) === String(t.atividade))
+            : String(t.atividade) === String(filtro.atividade))) &&
+        (!filtro.status || t.status === filtro.status) &&
+        (filtro.oficial === undefined || t.oficial === filtro.oficial),
+    );
+  const colisao = (t, propria = t) =>
+    tentativas.some(
+      (outra) =>
+        outra !== propria &&
+        String(outra.aluno) === String(t.aluno) &&
+        String(outra.atividade) === String(t.atividade) &&
+        (outra.numeroTentativa === t.numeroTentativa ||
+          (outra.status === "em_andamento" && t.status === "em_andamento") ||
+          (outra.oficial && t.oficial)),
+    );
+  const erroColisao = () =>
+    Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
+  substituir(TentativaAtividade, "findOne", async (filtro, _p, opcoes) => {
+    const lista = filtrarTentativas(filtro);
+    if (opcoes?.sort?.numeroTentativa === -1)
+      lista.sort((a, b) => b.numeroTentativa - a.numeroTentativa);
+    return lista[0] ?? null;
+  });
+  substituir(TentativaAtividade, "find", async (filtro) =>
+    filtrarTentativas(filtro).sort(
+      (a, b) => a.numeroTentativa - b.numeroTentativa,
+    ),
+  );
+  substituir(TentativaAtividade, "create", async (documentos) =>
+    documentos.map((documento) => {
+      const tentativa = {
+        status: "em_andamento",
+        oficial: false,
+        concluidaEm: null,
+        respostas: [],
+        respostasRegistradasEm: null,
+        origem: "jogo",
+        ...documento,
+        _id: new mongoose.Types.ObjectId(),
+      };
+      if (colisao(tentativa)) throw erroColisao();
+      tentativas.push(tentativa);
+      return tentativa;
+    }),
+  );
+  substituir(
+    TentativaAtividade,
+    "findOneAndUpdate",
+    async (filtro, atualizacao) => {
+      const [tentativa] = filtrarTentativas(filtro);
+      if (!tentativa) return null;
+      const atualizada = { ...tentativa, ...atualizacao.$set };
+      if (colisao(atualizada, tentativa)) throw erroColisao();
+      Object.assign(tentativa, atualizacao.$set);
+      return tentativa;
+    },
+  );
 
   substituir(Aluno, "findById", (id) => ({
     select: async () => alunos.get(String(id)) ?? null,
@@ -302,6 +381,7 @@ afterEach(() => {
       ProgressoAtividade,
       Aluno,
       MovimentacaoMoeda,
+      TentativaAtividade,
       mongoose,
     }[nomeModelo];
     if (caminhoMetodo === "prototype.save") modelo.prototype.save = original;
@@ -902,10 +982,12 @@ test("falha ao registrar recompensa reverte a conclusao e nao deixa movimento pa
         ]),
       );
       const totalMovimentacoesAntes = movimentacoes.length;
+      const tentativasAntes = tentativas.map((t) => ({ ...t }));
       try {
         return await operacao();
       } catch (erro) {
         progressos = progressosAntes;
+        tentativas = tentativasAntes;
         movimentacoes.length = totalMovimentacoesAntes;
         throw erro;
       }
@@ -925,4 +1007,7 @@ test("falha ao registrar recompensa reverte a conclusao e nao deixa movimento pa
   assert.equal(progresso.status, "iniciada");
   assert.equal(progresso.concluidaEm, null);
   assert.equal(movimentacoes.length, 0);
+  assert.equal(tentativas.length, 1);
+  assert.equal(tentativas[0].status, "em_andamento");
+  assert.equal(tentativas[0].oficial, false);
 });

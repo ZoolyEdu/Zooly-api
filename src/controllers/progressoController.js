@@ -1,9 +1,6 @@
 import mongoose from "mongoose";
 import progressoService from "../services/progressoService.js";
-
-function erro(res, status, mensagem) {
-  return res.status(status).json({ sucesso: false, mensagem });
-}
+import { enviarErro } from "../utils/erros.js";
 
 function corpoVazio(body) {
   return (
@@ -38,10 +35,14 @@ function responderErroDominio(res, codigo) {
       "O aluno ainda não iniciou esta atividade.",
     ],
     "progresso-nao-encontrado": [404, "Progresso não encontrado."],
+    "tentativa-nao-aberta": [
+      409,
+      "Esta tentativa já foi concluída. Inicie uma nova tentativa para responder de novo.",
+    ],
   };
   const resposta = respostas[codigo];
   if (!resposta) return false;
-  erro(res, resposta[0], resposta[1]);
+  enviarErro(res, resposta[0], resposta[1]);
   return true;
 }
 
@@ -49,7 +50,7 @@ async function mapa(req, res, next) {
   try {
     const { turmaId } = req.params;
     if (!mongoose.isValidObjectId(turmaId))
-      return erro(res, 400, "O identificador da turma é inválido.");
+      return enviarErro(res, 400, "O identificador da turma é inválido.");
 
     const resultado = await progressoService.montarMapa({
       turmaId,
@@ -68,9 +69,9 @@ async function iniciar(req, res, next) {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId))
-      return erro(res, 400, "O identificador da atividade é inválido.");
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
     if (!corpoVazio(req.body))
-      return erro(
+      return enviarErro(
         res,
         400,
         "O início não aceita campos enviados pelo cliente.",
@@ -81,9 +82,12 @@ async function iniciar(req, res, next) {
       alunoId: req.usuario.id,
     });
     if (resultado.erro) return responderErroDominio(res, resultado.erro);
-    return res
-      .status(resultado.existente ? 200 : 201)
-      .json({ sucesso: true, progresso: resultado.progresso });
+    return res.status(resultado.existente ? 200 : 201).json({
+      sucesso: true,
+      progresso: resultado.progresso,
+      tentativa: resultado.tentativa,
+      tentativaRetomada: resultado.tentativaRetomada,
+    });
   } catch (error) {
     return next(error);
   }
@@ -93,7 +97,7 @@ async function respostas(req, res, next) {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId))
-      return erro(res, 400, "O identificador da atividade é inválido.");
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
 
     const resultado = await progressoService.salvarRespostas({
       atividadeId,
@@ -101,9 +105,11 @@ async function respostas(req, res, next) {
       body: req.body,
     });
     if (resultado.erro) return responderErroDominio(res, resultado.erro);
-    return res
-      .status(200)
-      .json({ sucesso: true, progresso: resultado.progresso });
+    return res.status(200).json({
+      sucesso: true,
+      progresso: resultado.progresso,
+      tentativa: resultado.tentativa,
+    });
   } catch (error) {
     return next(error);
   }
@@ -113,9 +119,9 @@ async function concluir(req, res, next) {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId))
-      return erro(res, 400, "O identificador da atividade é inválido.");
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
     if (!corpoVazio(req.body))
-      return erro(
+      return enviarErro(
         res,
         400,
         "A conclusão não aceita campos enviados pelo cliente.",
@@ -148,7 +154,7 @@ async function conteudo(req, res, next) {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId))
-      return erro(res, 400, "O identificador da atividade é inválido.");
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
 
     const resultado = await progressoService.obterConteudo({
       atividadeId,
@@ -167,7 +173,7 @@ async function obterPorAtividade(req, res, next) {
   try {
     const { atividadeId } = req.params;
     if (!mongoose.isValidObjectId(atividadeId))
-      return erro(res, 400, "O identificador da atividade é inválido.");
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
 
     const resultado = await progressoService.obterPorAtividade({
       atividadeId,
@@ -182,7 +188,25 @@ async function obterPorAtividade(req, res, next) {
   }
 }
 
+async function tentativas(req, res, next) {
+  try {
+    const { atividadeId } = req.params;
+    if (!mongoose.isValidObjectId(atividadeId))
+      return enviarErro(res, 400, "O identificador da atividade é inválido.");
+
+    const resultado = await progressoService.listarTentativasDaAtividade({
+      atividadeId,
+      alunoId: req.usuario.id,
+    });
+    if (resultado.erro) return responderErroDominio(res, resultado.erro);
+    return res.status(200).json({ sucesso: true, ...resultado });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export default {
+  tentativas,
   mapa,
   iniciar,
   respostas,

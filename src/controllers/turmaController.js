@@ -1,8 +1,5 @@
 import turmaService from "../services/turmaService.js";
-
-function rejeitar(res, status, mensagem) {
-  return res.status(status).json({ sucesso: false, mensagem });
-}
+import { enviarErro } from "../utils/erros.js";
 
 async function cadastrar(req, res, next) {
   try {
@@ -32,7 +29,7 @@ async function cadastrar(req, res, next) {
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];
-      return rejeitar(res, status, mensagem);
+      return enviarErro(res, status, mensagem);
     }
     return res
       .status(201)
@@ -50,7 +47,7 @@ async function listar(req, res, next) {
   try {
     const resultado = await turmaService.listar(req.usuario.id);
     if (resultado.erro === "professor-nao-encontrado")
-      return rejeitar(res, 401, "Professor não encontrado.");
+      return enviarErro(res, 401, "Professor não encontrado.");
     return res
       .status(200)
       .json({
@@ -77,7 +74,7 @@ async function consultar(req, res, next) {
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];
-      return rejeitar(res, status, mensagem);
+      return enviarErro(res, status, mensagem);
     }
     return res.status(200).json({ sucesso: true, turma: resultado.turma });
   } catch (error) {
@@ -106,7 +103,7 @@ async function atualizar(req, res, next) {
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];
-      return rejeitar(res, status, mensagem);
+      return enviarErro(res, status, mensagem);
     }
     return res
       .status(200)
@@ -139,7 +136,7 @@ async function definirSenhaAcesso(req, res, next) {
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];
-      return rejeitar(res, status, mensagem);
+      return enviarErro(res, status, mensagem);
     }
     return res
       .status(200)
@@ -169,7 +166,7 @@ async function arquivar(req, res, next) {
     };
     if (resultado.erro) {
       const [status, mensagem] = respostas[resultado.erro];
-      return rejeitar(res, status, mensagem);
+      return enviarErro(res, status, mensagem);
     }
     return res
       .status(200)

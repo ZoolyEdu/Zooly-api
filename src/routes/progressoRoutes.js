@@ -13,6 +13,10 @@ router.put("/atividades/:atividadeId/respostas", progressoController.respostas);
 router.patch("/atividades/:atividadeId/concluir", progressoController.concluir);
 router.get("/", progressoController.listar);
 router.get("/atividades/:atividadeId/conteudo", progressoController.conteudo);
+router.get(
+  "/atividades/:atividadeId/tentativas",
+  progressoController.tentativas,
+);
 router.get("/atividades/:atividadeId", progressoController.obterPorAtividade);
 
 export default router;

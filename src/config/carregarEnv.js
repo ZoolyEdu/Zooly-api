@@ -1,4 +1,4 @@
 import dotenv from 'dotenv';
-dotenv.config({
-  path: process.env.ZOOLY_AMBIENTE?.trim() === 'demo' ? '.env.demo' : '.env'
-});
+
+// A API só usa dados reais: o modo demonstração e o seu arquivo de ambiente foram removidos.
+dotenv.config({ path: '.env' });
