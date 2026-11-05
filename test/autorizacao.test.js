@@ -172,6 +172,14 @@ function prepararMocks() {
       ),
     );
   });
+  // O cadastro confere se o código sorteado já existe antes de gravar.
+  substituir(Turma, "exists", async (filter) =>
+    [...turmas.values()].some(
+      (turma) => turma.codigoPermanente === filter.codigoPermanente,
+    )
+      ? { _id: "existente" }
+      : null,
+  );
   substituir(Turma, "create", async (data) => {
     operacoes.turmaCriada += 1;
     const turma = {

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import Escola from "../models/Escola.js";
@@ -27,8 +27,29 @@ function professorTemAcesso(professor, turma) {
   return String(turma.professorResponsavel) === String(professor._id);
 }
 
-function gerarCodigoPermanente() {
-  return `TUR-${randomBytes(6).toString("hex").toUpperCase()}`;
+// Código curto da turma: "TUR-" + 4 caracteres de A–Z e 0–9 (ex.: TUR-6E27).
+// São 36^4 = 1.679.616 combinações; a unicidade é garantida no cadastro.
+// Códigos antigos (ex.: TUR-6E2772697D59, TURMA-A) continuam válidos: a entrada
+// do aluno só normaliza o texto (trim + maiúsculas) e nunca exige um formato.
+export const PREFIXO_CODIGO_TURMA = "TUR-";
+export const ALFABETO_CODIGO_TURMA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+export const TAMANHO_SUFIXO_CODIGO_TURMA = 4;
+export const FORMATO_CODIGO_TURMA = /^TUR-[A-Z0-9]{4}$/;
+export const TENTATIVAS_CODIGO_TURMA = 10;
+
+// `sortear(n)` devolve um inteiro em [0, n). Padrão: crypto.randomInt (uniforme e seguro).
+export function gerarCodigoPermanente(sortear = randomInt) {
+  let sufixo = "";
+  for (let i = 0; i < TAMANHO_SUFIXO_CODIGO_TURMA; i += 1) {
+    sufixo += ALFABETO_CODIGO_TURMA[sortear(ALFABETO_CODIGO_TURMA.length)];
+  }
+  return `${PREFIXO_CODIGO_TURMA}${sufixo}`;
+}
+
+// Permite aos testes forçar sequências de códigos (e colisões) de forma determinística.
+let geradorCodigo = () => gerarCodigoPermanente();
+export function configurarGeradorCodigoTurma(gerador) {
+  geradorCodigo = gerador ?? (() => gerarCodigoPermanente());
 }
 
 async function cadastrar({ body, professorId }) {
@@ -58,9 +79,12 @@ async function cadastrar({ body, professorId }) {
   const escola = await Escola.findById(escolaId);
   if (!escola) return { erro: "escola-nao-encontrada" };
 
+  // Unicidade em duas camadas: consulta prévia (evita tentar códigos já usados) e o
+  // índice único do model, que protege contra corridas entre cadastros simultâneos.
   let turma;
-  for (let tentativa = 0; tentativa < 3; tentativa += 1) {
-    const codigoPermanente = gerarCodigoPermanente();
+  for (let tentativa = 0; tentativa < TENTATIVAS_CODIGO_TURMA; tentativa += 1) {
+    const codigoPermanente = geradorCodigo();
+    if (await Turma.exists({ codigoPermanente })) continue;
     try {
       turma = await Turma.create({
         nome: nome.trim(),
