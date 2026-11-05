@@ -133,7 +133,7 @@ async function semear() {
     senhaAcessoHash: "hash-nao-usado",
   });
   const alunoDoc = await Aluno.create({
-    ra: "BANCO-0001",
+    ra: "0000000000001",
     nomeCompleto: "Rita Teste",
     turma: turma._id,
   });

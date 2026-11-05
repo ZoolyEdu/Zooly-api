@@ -79,7 +79,7 @@ function turmaDocumento(turma) {
 function alunoFixture(id, turma) {
   return {
     _id: id,
-    ra: id === alunoAId ? "RA-A" : "RA-B",
+    ra: id === alunoAId ? "0000000000001" : "0000000000002",
     nomeCompleto: id === alunoAId ? "Aluno A" : "Aluno B",
     sexo: "nao_informado",
     turma,
@@ -344,12 +344,12 @@ test("professor não lista nem altera alunos de outra escola", async () => {
   const alteracao = await requisitar(`/alunos/${alunoBId}`, {
     method: "PUT",
     token,
-    body: { ra: "RA-ALTERADO" },
+    body: { ra: "0000000000003" },
   });
   assert.equal(consulta.status, 403);
   assert.equal(alteracao.status, 403);
   assert.equal(operacoes.alunoSalvo, 0);
-  assert.equal(alunos.get(alunoBId).ra, "RA-B");
+  assert.equal(alunos.get(alunoBId).ra, "0000000000002");
 });
 
 test("professor não transfere aluno acessível para turma de outra escola", async () => {
@@ -419,7 +419,7 @@ test("colega da mesma escola não lista, consulta nem altera turma e alunos de o
       await requisitar("/alunos", {
         method: "POST",
         token,
-        body: { ra: "RA-NOVO", turmaId: turmaColegaId },
+        body: { ra: "0000000000003", turmaId: turmaColegaId },
       })
     ).status,
     403,
@@ -459,7 +459,7 @@ test("professor autorizado consulta e altera turma e alunos da própria escola",
       await requisitar(`/alunos/${alunoAId}`, {
         method: "PUT",
         token,
-        body: { ra: "RA-A-ATUALIZADO" },
+        body: { ra: "0000000000004" },
       })
     ).status,
     200,
@@ -503,7 +503,7 @@ test("professor autorizado cria turma e aluno na própria escola", async () => {
   const aluno = await requisitar("/alunos", {
     method: "POST",
     token,
-    body: { ra: "RA-NOVO", turmaId: turmaAId },
+        body: { ra: "0000000000003", turmaId: turmaAId },
   });
   assert.equal(aluno.status, 201);
   assert.equal(operacoes.turmaCriada, 1);

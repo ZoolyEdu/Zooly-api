@@ -4,6 +4,7 @@ import Professor from "../models/Professor.js";
 import Turma from "../models/Turma.js";
 import AvatarAluno from "../models/AvatarAluno.js";
 import catalogoAvatares from "../config/catalogoAvatares.js";
+import { normalizarRa } from "../utils/ra.js";
 
 // Cada professor gerencia somente os alunos das turmas pelas quais é responsável.
 function professorTemAcesso(professor, turma) {
@@ -11,6 +12,8 @@ function professorTemAcesso(professor, turma) {
 }
 
 async function cadastrar({ ra, turmaId, professorId }) {
+  const raNormalizado = normalizarRa(ra);
+  if (!raNormalizado) return { erro: "ra-invalido" };
   const turma = await Turma.findById(turmaId);
 
   if (!turma || turma.arquivada) return { erro: "turma-nao-encontrada" };
@@ -22,7 +25,7 @@ async function cadastrar({ ra, turmaId, professorId }) {
   }
 
   const aluno = await Aluno.create({
-    ra: String(ra).trim(),
+    ra: raNormalizado,
     turma: turma._id,
   });
 
@@ -59,10 +62,13 @@ async function atualizar({ alunoId, ra, turmaId, professorId }) {
     return { erro: "sem-permissao-edicao" };
   }
 
-  if (ra !== undefined) {
-    const raNormalizado = String(ra).trim();
+  // Reenviar o RA atual (mesmo antigo, fora do padrão) não é uma troca: nada muda.
+  // Um RA diferente é um registro novo e precisa ter exatamente 13 dígitos.
+  const mesmoRa = typeof ra === "string" && ra.trim() === aluno.ra;
+  if (ra !== undefined && !mesmoRa) {
+    const raNormalizado = normalizarRa(ra);
 
-    if (!raNormalizado) return { erro: "ra-vazio" };
+    if (!raNormalizado) return { erro: "ra-invalido" };
 
     const existente = await Aluno.findOne({
       ra: raNormalizado,

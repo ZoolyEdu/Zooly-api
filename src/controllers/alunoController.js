@@ -1,15 +1,12 @@
 import alunoService from "../services/alunoService.js";
-
-// Sem esta checagem, um objeto viraria o RA "[object Object]".
-function raValido(ra) {
-  return typeof ra === "string" || typeof ra === "number";
-}
+import { normalizarRa } from "../utils/ra.js";
 
 async function cadastrar(req, res) {
   try {
     const { ra, turmaId } = req.body;
 
-    if (!ra || !turmaId || !raValido(ra)) {
+    const raNormalizado = normalizarRa(ra);
+    if (!raNormalizado || !turmaId) {
       return res.status(400).json({
         sucesso: false,
         mensagem: "O RA e a turma são obrigatórios.",
@@ -17,7 +14,7 @@ async function cadastrar(req, res) {
     }
 
     const resultado = await alunoService.cadastrar({
-      ra,
+      ra: raNormalizado,
       turmaId,
       professorId: req.usuario.id,
     });
@@ -116,13 +113,17 @@ async function atualizar(req, res) {
   try {
     const { ra, turmaId } = req.body;
 
-    if (
-      (ra === undefined && turmaId === undefined) ||
-      (ra !== undefined && !raValido(ra))
-    ) {
+    if (ra === undefined && turmaId === undefined) {
       return res.status(400).json({
         sucesso: false,
         mensagem: "Informe o RA ou a turma para atualizar.",
+      });
+    }
+    // O formato (13 dígitos) é conferido no service, que aceita reenviar o RA atual.
+    if (ra !== undefined && typeof ra !== "string") {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: "O RA deve conter exatamente 13 dígitos.",
       });
     }
 
@@ -139,7 +140,7 @@ async function atualizar(req, res) {
         403,
         "Você não tem permissão para editar este aluno.",
       ],
-      "ra-vazio": [400, "O RA não pode ficar vazio."],
+      "ra-invalido": [400, "O RA deve conter exatamente 13 dígitos."],
       "ra-duplicado": [409, "Já existe outro aluno cadastrado com este RA."],
       "nova-turma-nao-encontrada": [
         404,

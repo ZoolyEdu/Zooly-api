@@ -168,9 +168,9 @@ async function semear() {
     },
   ]);
   const [alunoA, alunoA2, alunoB] = await Aluno.create([
-    { ra: "TENT-0001", nomeCompleto: "Ana Teste", turma: turmaA._id },
-    { ra: "TENT-0002", nomeCompleto: "Beto Teste", turma: turmaA._id },
-    { ra: "TENT-0003", nomeCompleto: "Caio Teste", turma: turmaB._id },
+    { ra: "0000000000001", nomeCompleto: "Ana Teste", turma: turmaA._id },
+    { ra: "0000000000002", nomeCompleto: "Beto Teste", turma: turmaA._id },
+    { ra: "0000000000003", nomeCompleto: "Caio Teste", turma: turmaB._id },
   ]);
   const base = {
     status: "publicada",
@@ -509,7 +509,7 @@ describe("consulta do histórico e autorização", () => {
 
     const resposta = await historicoProfessor();
     assert.equal(resposta.status, 200);
-    assert.equal(resposta.corpo.aluno.ra, "TENT-0001");
+    assert.equal(resposta.corpo.aluno.ra, "0000000000001");
     assert.equal(resposta.corpo.atividades.length, 1);
     const [missao] = resposta.corpo.atividades;
     assert.equal(missao.atividade.titulo, "Missão 1");

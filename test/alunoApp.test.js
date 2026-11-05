@@ -92,7 +92,7 @@ after(async () => {
 beforeEach(() => {
   aluno = {
     _id: alunoId,
-    ra: "RA-1",
+    ra: "0000000000001",
     nomeCompleto: "Ana",
     sexo: "feminino",
     turma: turmaId,
@@ -144,7 +144,7 @@ test("GET /alunos/me devolve o perfil do token com a turma, sem dados internos",
   const corpo = await resposta.json();
 
   assert.equal(resposta.status, 200);
-  assert.equal(corpo.aluno.ra, "RA-1");
+  assert.equal(corpo.aluno.ra, "0000000000001");
   assert.equal(corpo.aluno.avatarSelecionado, "avatar-01");
   assert.deepEqual(corpo.aluno.turma, {
     id: turmaId,
