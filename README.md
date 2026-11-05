@@ -202,11 +202,11 @@ Execute a suíte completa:
 npm test
 ```
 
-**Último resultado registrado: 322 testes aprovados.**
+**Último resultado registrado: 341 testes aprovados.**
 
 A suíte contempla testes de autenticação, autorização, validações, operações de negócio, progresso, tentativas, moedas, loja, desempenho, relatórios e outros comportamentos da API.
 
-Grande parte dos testes de rotas utiliza mocks dos models. Os testes de integração `test/tentativas.test.js` e `test/bancoHistorias.test.js` utilizam um MongoDB em memória por meio do `mongodb-memory-server`, sem conexão com banco externo.
+Grande parte dos testes de rotas utiliza mocks dos models. Os testes de integração `test/tentativas.test.js`, `test/bancoHistorias.test.js` e `test/dadosAvaliacao.test.js` utilizam um MongoDB em memória por meio do `mongodb-memory-server`, sem conexão com banco externo.
 
 Na primeira execução, o binário do MongoDB pode ser baixado automaticamente e armazenado em cache.
 
@@ -366,9 +366,13 @@ npm run alunos:auditar-ra
 
 ### Login do aluno
 
-```http
+O login utiliza o RA e a senha de acesso da turma.
+
+Novos cadastros devem utilizar um RA com exatamente 13 dígitos, preservando os zeros à esquerda. Para garantir a compatibilidade com alunos cadastrados anteriormente, a API também permite o login utilizando RAs antigos, sem exigir sua alteração.
+
+\```http
 POST /api/auth/aluno/login
-```
+\```
 
 A autenticação valida o RA e a senha de acesso da turma, respeitando as regras de cadastro e acesso do aluno.
 

@@ -7,7 +7,6 @@ node_modules/
 
 # Permitir o arquivo de exemplo
 !.env.example
-!.env.demo.example
 
 # Logs
 npm-debug.log*

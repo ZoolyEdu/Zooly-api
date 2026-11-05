@@ -6,17 +6,19 @@
   "engines": {
     "node": ">=20.19"
   },
-  "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "test": "node --test \"test/**/*.test.js\"",
-    "migrar:tentativas": "node scripts/migrarTentativas.js",
-    "historias:semear": "node scripts/semearHistorias.js",
-    "alunos:auditar-ra": "node scripts/auditarRasAlunos.js"
-  },
+"scripts": {
+  "dev": "nodemon src/server.js",
+  "start": "node src/server.js",
+  "test": "node --test \"test/**/*.test.js\"",
+  "migrar:tentativas": "node scripts/migrarTentativas.js",
+  "historias:semear": "node scripts/semearHistorias.js",
+  "alunos:auditar-ra": "node scripts/auditarRasAlunos.js",
+  "dados:avaliacao": "node scripts/prepararDadosAvaliacao.js",
+  "dados:avaliacao:remover": "node scripts/removerDadosAvaliacao.js"
+},
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ZoolyEdu/Zooly-api.git"
+    "url": "git+https://github.com/ZoolyEduc/Zooly-api.git"
   },
   "keywords": [
     "zooly",
