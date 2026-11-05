@@ -109,6 +109,87 @@ test("consulta por código retorna registro integral da BNCC", async () => {
   assert.deepEqual((await response.json()).item, registro);
 });
 
+const objetivoEI02TS01 = {
+  codigo: "EI02TS01",
+  etapa: "EI",
+  texto: "Criar sons com materiais, objetos e instrumentos musicais.",
+  vigencia: {},
+  fonte: { documento: "BNCC" },
+};
+
+test("busca por código existente consulta /aprendizagens e devolve o item no contrato da busca", async () => {
+  const urls = [];
+  configurarFetchBncc(async (url) => {
+    urls.push(String(url));
+    return resposta(objetivoEI02TS01);
+  });
+  const response = await get("/busca?tema=EI02TS01&limite=10");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    sucesso: true,
+    itens: [objetivoEI02TS01],
+  });
+  assert.deepEqual(urls, ["https://api.bncc.dev/v1/aprendizagens/EI02TS01"]);
+});
+
+test("busca por código aceita minúsculas e espaços nas pontas", async () => {
+  const urls = [];
+  configurarFetchBncc(async (url) => {
+    urls.push(String(url));
+    return resposta(objetivoEI02TS01);
+  });
+  const response = await get("/busca?tema=%20ei02ts01%20");
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).itens, [objetivoEI02TS01]);
+  assert.deepEqual(urls, ["https://api.bncc.dev/v1/aprendizagens/EI02TS01"]);
+});
+
+test("busca por código inexistente devolve lista vazia, sem erro", async () => {
+  configurarFetchBncc(async () => resposta({ erro: "Não encontrado" }, 404));
+  const response = await get("/busca?tema=EI02TS99");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { sucesso: true, itens: [] });
+});
+
+test("busca por código fora do escopo (EF06+) devolve lista vazia sem consultar a fonte", async () => {
+  let chamadas = 0;
+  configurarFetchBncc(async () => {
+    chamadas += 1;
+    return resposta(envelope([]));
+  });
+  for (const tema of ["EF06LP01", "EF67LP08", "EM13LGG101"]) {
+    const response = await get(`/busca?tema=${tema}`);
+    assert.equal(response.status, 200, tema);
+    assert.deepEqual((await response.json()).itens, [], tema);
+  }
+  assert.equal(chamadas, 0);
+});
+
+test("busca por código mantém os erros da fonte externa", async () => {
+  configurarFetchBncc(async () => resposta({ erro: "indisponível" }, 503));
+  assert.equal((await get("/busca?tema=EI02TS01")).status, 502);
+});
+
+test("texto comum e código parcial continuam usando a busca textual", async () => {
+  for (const tema of ["sons e ritmos", "EI02", "EI02TS"]) {
+    const urls = [];
+    configurarFetchBncc(async (url) => {
+      urls.push(String(url));
+      return resposta(
+        envelope(String(url).includes("etapa=EI") ? [objetivoEI02TS01] : []),
+      );
+    });
+    const response = await get(`/busca?tema=${encodeURIComponent(tema)}`);
+    assert.equal(response.status, 200, tema);
+    assert.deepEqual((await response.json()).itens, [objetivoEI02TS01], tema);
+    assert.equal(urls.length, 2, tema);
+    assert.ok(
+      urls.every((url) => url.startsWith("https://api.bncc.dev/v1/busca?")),
+      tema,
+    );
+  }
+});
+
 test("rejeita parâmetros ausentes, longos, fora do limite e chaves não reconhecidas", async () => {
   let chamadas = 0;
   configurarFetchBncc(async () => {

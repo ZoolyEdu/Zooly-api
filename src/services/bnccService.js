@@ -128,10 +128,34 @@ function validarBusca(body, etapaEsperada) {
   return body.itens;
 }
 
+// Formato geral de um código BNCC (ex.: EI02TS01, EF01LP01, EF67LP08, EM13LGG101).
+const formatoCodigoBncc = /^E[IFM]\d{2}[A-Z]{2,3}\d{2,3}$/;
+
+// A busca externa (/busca) é textual: procura palavras na descrição e nunca encontra
+// um código. Por isso, um código completo é consultado direto em /aprendizagens/{codigo}.
+async function buscarPorCodigo(codigo) {
+  // Código válido, mas fora do escopo atendido (EI e EF01–EF05): mesmo resultado
+  // que a busca textual daria após o filtro de etapa.
+  if (!codigoPermitido.test(codigo)) return [];
+  try {
+    return [await obterAprendizagem(codigo)];
+  } catch (error) {
+    // Código inexistente na BNCC: lista vazia, como numa busca sem resultados.
+    // Timeout, indisponibilidade e resposta inválida continuam virando erro.
+    if (error instanceof BnccServiceError && error.status === 404) return [];
+    throw error;
+  }
+}
+
 export async function buscarAprendizagens(
   tema,
   limite = MAX_RESULTS_PER_STAGE,
 ) {
+  const codigo = String(tema).trim().toUpperCase();
+  if (formatoCodigoBncc.test(codigo)) {
+    return { itens: await buscarPorCodigo(codigo) };
+  }
+
   const resultado = await Promise.all(
     ["EI", "EF"].map(async (etapa) => {
       const params = new URLSearchParams({
