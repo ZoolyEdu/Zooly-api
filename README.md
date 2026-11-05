@@ -29,6 +29,17 @@ A comunicação entre as aplicações e o backend acontece por meio de requisiç
 | Zooly API | https://zooly-api.onrender.com |
 | Zooly Web | https://zooly-web.vercel.app |
 | Zooly Game | https://zooly-game.vercel.app |
+## Acesso administrativo para avaliação
+
+Credenciais de acesso ao painel administrativo:
+
+| Informação | Dados |
+|---|---|
+| Perfil | Administrador |
+| E-mail | `kofitech0@gmail.com` |
+| Senha | `zoolyv22026` |
+
+
 
 ## Tecnologias utilizadas
 
@@ -220,6 +231,89 @@ Os recursos da API estão organizados pelos seguintes prefixos:
 | `/api/bncc` | Consulta de conteúdos da BNCC. |
 
 Os endpoints protegidos exigem autenticação e o perfil autorizado para a operação. As permissões específicas são definidas pelas rotas e pelos middlewares correspondentes.
+
+## Consulta à BNCC
+
+A API disponibiliza consultas à Base Nacional Comum Curricular (BNCC), permitindo que professores autenticados localizem habilidades por código ou por texto.
+
+As consultas estão disponíveis para usuários com perfil de professor, independentemente de possuírem turmas cadastradas.
+
+### Autenticação
+
+As rotas de consulta BNCC exigem autenticação.
+
+Utilize um token JWT de professor no cabeçalho `Authorization`:
+
+```http
+Authorization: Bearer SEU_TOKEN
+```
+
+### Busca por código da habilidade
+
+Para consultar uma habilidade específica, utilize:
+
+```http
+GET /api/bncc/:codigo
+```
+
+Exemplo:
+
+```http
+GET /api/bncc/EI02TS01
+```
+
+Também é possível informar o código em letras minúsculas. A API normaliza o código durante a consulta.
+
+Outro exemplo:
+
+```http
+GET /api/bncc/EF01LP01
+```
+
+### Busca por texto ou tema
+
+Para localizar habilidades relacionadas a um assunto, utilize:
+
+```http
+GET /api/bncc/busca?tema=leitura&limite=10
+```
+
+O parâmetro `tema` informa o termo que será pesquisado, enquanto `limite` controla a quantidade máxima de resultados solicitados.
+
+Exemplos de consultas:
+
+```http
+GET /api/bncc/busca?tema=leitura&limite=10
+GET /api/bncc/busca?tema=animais&limite=10
+GET /api/bncc/busca?tema=meio%20ambiente&limite=10
+```
+
+### Resumo das consultas
+
+| Método | Endpoint | Finalidade |
+|---|---|---|
+| GET | `/api/bncc/:codigo` | Busca uma habilidade pelo código BNCC. |
+| GET | `/api/bncc/busca?tema=leitura` | Busca habilidades por tema ou texto. |
+
+**Observações:**
+
+- As consultas exigem token de professor.
+- Requisições sem autenticação recebem resposta HTTP `401`.
+- Uma pesquisa sem resultados retorna uma lista vazia.
+- A consulta pode ser realizada mesmo quando o professor ainda não possui turmas cadastradas.
+
+### Exemplos de validação
+
+Foram realizadas consultas para verificar o funcionamento da integração:
+
+| Consulta | Resultado |
+|---|---|
+| Tema `leitura` | 7 habilidades encontradas. |
+| Tema `animais` | 6 habilidades encontradas. |
+| Tema `meio ambiente` | 10 habilidades encontradas. |
+| Tema sem correspondência | Lista vazia. |
+| Código `EF01LP01` | Habilidade encontrada. |
+| Requisição sem token | HTTP 401. |
 
 ## Autenticação e primeiro acesso dos alunos
 
