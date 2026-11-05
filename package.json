@@ -11,7 +11,8 @@
     "start": "node src/server.js",
     "test": "node --test \"test/**/*.test.js\"",
     "migrar:tentativas": "node scripts/migrarTentativas.js",
-    "historias:semear": "node scripts/semearHistorias.js"
+    "historias:semear": "node scripts/semearHistorias.js",
+    "alunos:auditar-ra": "node scripts/auditarRasAlunos.js"
   },
   "repository": {
     "type": "git",

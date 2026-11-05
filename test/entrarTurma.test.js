@@ -11,13 +11,13 @@ const alunoNovoId = "507f1f77bcf86cd799439301";
 const alunoExistenteId = "507f1f77bcf86cd799439302";
 const turmaId = "507f1f77bcf86cd799439303";
 const outraTurmaId = "507f1f77bcf86cd799439304";
-const raAluno = "RA-ENTRADA";
+const raAluno = "0000987654321";
 const codigoTurma = "TURMA-TESTE";
 const senhaTurma = "senha-compartilhada";
 const hashTurma = await bcrypt.hash(senhaTurma, 4);
 const mensagemCredenciaisInvalidas = "Código da turma ou senha inválidos.";
 const mensagemCamposObrigatorios =
-  "RA, código da turma e senha são obrigatórios.";
+  "Informe o RA, o código da turma e a senha.";
 const mensagemConfiguracaoAusente = "Autenticação não configurada no servidor.";
 const mensagemConflitoTurma = "Este RA já está associado a outra turma.";
 const mensagemConflitoCadastro = "Este RA já está associado a outro cadastro.";
@@ -193,7 +193,7 @@ test("entrada válida cria aluno, mantém cadastro pendente e emite JWT verific�
 
   const resposta = await postEntrarTurma(
     dadosEntrada({
-      ra: ` ${raAluno} `,
+      ra: raAluno,
       codigoPermanente: ` ${codigoTurma.toLowerCase()} `,
     }),
   );

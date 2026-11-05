@@ -264,6 +264,12 @@ PATCH /api/alunos/cadastro-inicial
 
 Depois da conclusão do cadastro, o aluno pode seguir para a introdução guiada do jogo.
 
+O RA é armazenado como texto, e zeros à esquerda fazem parte dele. Novos RAs (aluno cadastrado pelo professor, troca de RA, primeiro acesso pelo jogo ou entrada na turma que cria o aluno) precisam ter exatamente 13 dígitos. Alunos já cadastrados com RA em outro formato continuam podendo fazer login, entrar na turma e concluir o cadastro pendente; esses RAs nunca são alterados automaticamente. Para saber quantos RAs estão fora do padrão, sem alterar nada:
+
+```bash
+npm run alunos:auditar-ra
+```
+
 ### Login do aluno
 
 ```http

@@ -48,7 +48,7 @@ function substituir(modelo, metodo, implementacao) {
 function alunoFixture(id, overrides = {}) {
   return {
     _id: id,
-    ra: id === alunoAId ? 'RA-A' : 'RA-B',
+    ra: id === alunoAId ? '0000000000001' : '0000000000002',
     nomeCompleto: id === alunoAId ? 'Aluno A' : 'Aluno B',
     sexo: 'nao_informado',
     turma: turmaAId,
@@ -269,7 +269,7 @@ after(async () => {
 });
 
 test('POST /alunos cria aluno pendente na turma autorizada e normaliza o RA', async () => {
-  const resposta = await postAluno({ ra: '  RA-NOVO  ', turmaId: turmaAId });
+  const resposta = await postAluno({ ra: '0000000000003', turmaId: turmaAId });
   const corpo = await resposta.json();
 
   assert.equal(resposta.status, 201);
@@ -278,17 +278,17 @@ test('POST /alunos cria aluno pendente na turma autorizada e normaliza o RA', as
     mensagem: 'Aluno cadastrado. O cadastro inicial está pendente.',
     aluno: {
       id: '507f1f77bcf86cd799439699',
-      ra: 'RA-NOVO',
+      ra: '0000000000003',
       turma: turmaAId,
       cadastroInicialConcluido: false
     }
   });
-  assert.deepEqual(chamadas.criacoesAluno, [{ ra: 'RA-NOVO', turma: turmaAId }]);
+  assert.deepEqual(chamadas.criacoesAluno, [{ ra: '0000000000003', turma: turmaAId }]);
   assert.deepEqual(chamadas.buscasProfessor, [professorAId]);
 });
 
 test('POST /alunos rejeita RA ou turma ausentes antes de consultar os models', async () => {
-  for (const body of [{}, { ra: 'RA-NOVO' }, { turmaId: turmaAId }, { ra: '', turmaId: turmaAId }]) {
+  for (const body of [{}, { ra: '0000000000003' }, { turmaId: turmaAId }, { ra: '', turmaId: turmaAId }]) {
     const resposta = await postAluno(body);
     assert.equal(resposta.status, 400);
     assert.deepEqual(await resposta.json(), {
@@ -302,17 +302,17 @@ test('POST /alunos rejeita RA ou turma ausentes antes de consultar os models', a
 
 test('POST /alunos rejeita turma inexistente ou arquivada e ID inválido com respostas atuais', async () => {
   turmas.get(turmaAId).arquivada = true;
-  const arquivada = await postAluno({ ra: 'RA-NOVO', turmaId: turmaAId });
+  const arquivada = await postAluno({ ra: '0000000000003', turmaId: turmaAId });
   assert.equal(arquivada.status, 404);
   assert.deepEqual(await arquivada.json(), {
     sucesso: false,
     mensagem: 'Turma não encontrada ou arquivada.'
   });
 
-  const inexistente = await postAluno({ ra: 'RA-NOVO', turmaId: '507f1f77bcf86cd799439688' });
+  const inexistente = await postAluno({ ra: '0000000000003', turmaId: '507f1f77bcf86cd799439688' });
   assert.equal(inexistente.status, 404);
 
-  const malformada = await postAluno({ ra: 'RA-NOVO', turmaId: 'turma-invalida' });
+  const malformada = await postAluno({ ra: '0000000000003', turmaId: 'turma-invalida' });
   assert.equal(malformada.status, 400);
   assert.deepEqual(await malformada.json(), {
     sucesso: false,
@@ -322,7 +322,7 @@ test('POST /alunos rejeita turma inexistente ou arquivada e ID inválido com res
 });
 
 test('POST /alunos exige vínculo do professor com a escola da turma', async () => {
-  const semVinculo = await postAluno({ ra: 'RA-NOVO', turmaId: turmaBId });
+  const semVinculo = await postAluno({ ra: '0000000000003', turmaId: turmaBId });
   assert.equal(semVinculo.status, 403);
   assert.deepEqual(await semVinculo.json(), {
     sucesso: false,
@@ -330,7 +330,7 @@ test('POST /alunos exige vínculo do professor com a escola da turma', async () 
   });
 
   professores.delete(professorAId);
-  const professorAusente = await postAluno({ ra: 'RA-NOVO', turmaId: turmaAId });
+  const professorAusente = await postAluno({ ra: '0000000000003', turmaId: turmaAId });
   assert.equal(professorAusente.status, 403);
   assert.equal(chamadas.criacoesAluno.length, 0);
 });
@@ -338,7 +338,7 @@ test('POST /alunos exige vínculo do professor com a escola da turma', async () 
 test('POST /alunos mapeia duplicidade MongoDB para HTTP 409', async () => {
   erroCriacaoAluno = Object.assign(new Error('duplicate key'), { code: 11000 });
 
-  const resposta = await postAluno({ ra: 'RA-EXISTENTE', turmaId: turmaAId });
+  const resposta = await postAluno({ ra: '0000000000004', turmaId: turmaAId });
 
   assert.equal(resposta.status, 409);
   assert.deepEqual(await resposta.json(), {
@@ -350,13 +350,13 @@ test('POST /alunos mapeia duplicidade MongoDB para HTTP 409', async () => {
 test('GET /alunos/turma/:turmaId retorna os campos públicos com RA e ordena por nome e ID', async () => {
   alunos.delete(alunoAId);
   alunos.set('507f1f77bcf86cd799439641', alunoFixture('507f1f77bcf86cd799439641', {
-    ra: 'RA-C', nomeCompleto: 'Caio', turma: turmaAId, campoPrivado: 'não expor'
+    ra: '0000000000003', nomeCompleto: 'Caio', turma: turmaAId, campoPrivado: 'não expor'
   }));
   alunos.set('507f1f77bcf86cd799439642', alunoFixture('507f1f77bcf86cd799439642', {
-    ra: 'RA-A', nomeCompleto: 'Ana', turma: turmaAId, campoPrivado: 'não expor'
+    ra: '0000000000001', nomeCompleto: 'Ana', turma: turmaAId, campoPrivado: 'não expor'
   }));
   alunos.set('507f1f77bcf86cd799439643', alunoFixture('507f1f77bcf86cd799439643', {
-    ra: 'RA-B', nomeCompleto: 'Ana', turma: turmaAId, campoPrivado: 'não expor'
+    ra: '0000000000002', nomeCompleto: 'Ana', turma: turmaAId, campoPrivado: 'não expor'
   }));
 
   const resposta = await listarAlunos(turmaAId);
@@ -365,7 +365,7 @@ test('GET /alunos/turma/:turmaId retorna os campos públicos com RA e ordena por
   assert.equal(resposta.status, 200);
   assert.equal(corpo.total, 3);
   assert.deepEqual(corpo.alunos.map(aluno => aluno.nomeCompleto), ['Ana', 'Ana', 'Caio']);
-  assert.deepEqual(corpo.alunos.map(aluno => aluno.ra), ['RA-A', 'RA-B', 'RA-C']);
+  assert.deepEqual(corpo.alunos.map(aluno => aluno.ra), ['0000000000001', '0000000000002', '0000000000003']);
   assert.equal(corpo.alunos.some(aluno => String(aluno._id) === alunoBId), false);
   assert.deepEqual(chamadas.filtrosListagem, [{ turma: turmaAId }]);
   assert.deepEqual(chamadas.projecoesAlunos, ['_id ra nomeCompleto sexo cadastroInicialConcluido turma createdAt']);
@@ -419,7 +419,7 @@ test('PUT /alunos/:alunoId exige pelo menos RA ou turma', async () => {
 });
 
 test('PUT /alunos/:alunoId atualiza RA normalizado e retorna os dados atuais do aluno', async () => {
-  const resposta = await editarAluno(alunoAId, { ra: '  RA-A-NOVO  ' });
+  const resposta = await editarAluno(alunoAId, { ra: '0000000000005' });
   const corpo = await resposta.json();
 
   assert.equal(resposta.status, 200);
@@ -428,33 +428,41 @@ test('PUT /alunos/:alunoId atualiza RA normalizado e retorna os dados atuais do 
     mensagem: 'Aluno atualizado com sucesso.',
     aluno: {
       id: alunoAId,
-      ra: 'RA-A-NOVO',
+      ra: '0000000000005',
       nomeCompleto: 'Aluno A',
       sexo: 'nao_informado',
       turma: turmaAId,
       cadastroInicialConcluido: false
     }
   });
-  assert.deepEqual(chamadas.buscasAlunoRa, [{ ra: 'RA-A-NOVO', _id: { $ne: alunoAId } }]);
-  assert.equal(alunos.get(alunoAId).ra, 'RA-A-NOVO');
+  assert.deepEqual(chamadas.buscasAlunoRa, [{ ra: '0000000000005', _id: { $ne: alunoAId } }]);
+  assert.equal(alunos.get(alunoAId).ra, '0000000000005');
 });
 
-test('PUT /alunos/:alunoId rejeita RA vazio ou já utilizado', async () => {
+test('PUT /alunos/:alunoId rejeita RA inválido ou já utilizado', async () => {
   const vazio = await editarAluno(alunoAId, { ra: '   ' });
   assert.equal(vazio.status, 400);
   assert.deepEqual(await vazio.json(), {
     sucesso: false,
-    mensagem: 'O RA não pode ficar vazio.'
+    mensagem: 'O RA deve conter exatamente 13 dígitos.'
   });
 
-  alunos.get(alunoBId).ra = 'RA-DUPLICADO';
-  const duplicado = await editarAluno(alunoAId, { ra: ' RA-DUPLICADO ' });
+  alunos.get(alunoBId).ra = '0000000000006';
+  const duplicado = await editarAluno(alunoAId, { ra: '0000000000006' });
   assert.equal(duplicado.status, 409);
   assert.deepEqual(await duplicado.json(), {
     sucesso: false,
     mensagem: 'Já existe outro aluno cadastrado com este RA.'
   });
-  assert.equal(alunos.get(alunoAId).ra, 'RA-A');
+  assert.equal(alunos.get(alunoAId).ra, '0000000000001');
+});
+
+test('POST /alunos rejeita RA fora do formato antes de consultar os models', async () => {
+  for (const ra of ['123456789012', '12345678901234', '12345678901A']) {
+    const resposta = await postAluno({ ra, turmaId: turmaAId });
+    assert.equal(resposta.status, 400);
+  }
+  assert.equal(chamadas.criacoesAluno.length, 0);
 });
 
 test('PUT /alunos/:alunoId transfere aluno para outra turma da escola autorizada', async () => {
@@ -468,7 +476,7 @@ test('PUT /alunos/:alunoId transfere aluno para outra turma da escola autorizada
 
 test('PUT /alunos/:alunoId valida acesso à turma atual e à turma de destino', async () => {
   alunos.get(alunoAId).turma = turmaBId;
-  const semAcessoAtual = await editarAluno(alunoAId, { ra: 'RA-NOVO' });
+  const semAcessoAtual = await editarAluno(alunoAId, { ra: '0000000000003' });
   assert.equal(semAcessoAtual.status, 403);
   assert.deepEqual(await semAcessoAtual.json(), {
     sucesso: false,
@@ -493,14 +501,14 @@ test('PUT /alunos/:alunoId valida acesso à turma atual e à turma de destino', 
 });
 
 test('PUT /alunos/:alunoId preserva respostas para aluno ausente, ID inválido e duplicidade no save', async () => {
-  const inexistente = await editarAluno('507f1f77bcf86cd799439688', { ra: 'RA-X' });
+  const inexistente = await editarAluno('507f1f77bcf86cd799439688', { ra: '0000000000003' });
   assert.equal(inexistente.status, 404);
   assert.deepEqual(await inexistente.json(), {
     sucesso: false,
     mensagem: 'Aluno não encontrado.'
   });
 
-  const malformado = await editarAluno('id-invalido', { ra: 'RA-X' });
+  const malformado = await editarAluno('id-invalido', { ra: '0000000000003' });
   assert.equal(malformado.status, 400);
   assert.deepEqual(await malformado.json(), {
     sucesso: false,
@@ -544,7 +552,7 @@ test('PATCH /alunos/cadastro-inicial valida campos, sexo permitido e normaliza n
     mensagem: 'Cadastro inicial concluído com sucesso.',
     aluno: {
       id: alunoAId,
-      ra: 'RA-A',
+      ra: '0000000000001',
       nomeCompleto: 'Nome Completo',
       sexo: 'feminino',
       turma: turmaAId,

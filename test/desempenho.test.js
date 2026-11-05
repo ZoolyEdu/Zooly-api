@@ -364,13 +364,13 @@ test("PDF semanal de uma turma exclui dados de outra turma e consulta cada conju
   const escolaB = "507f1f77bcf86cd799439121";
   const alunaTurmaA = {
     _id: alunoA,
-    ra: "RA-A",
+    ra: "0000000000001",
     nomeCompleto: "Ana Somente Turma A",
     turma: turmaA,
   };
   const alunaTurmaB = {
     _id: alunoB,
-    ra: "RA-B",
+    ra: "0000000000002",
     nomeCompleto: "Bruna Somente Turma B",
     turma: turmaB,
   };
@@ -499,7 +499,7 @@ test("PDF semanal aplica validação de data, existência, autenticação e auto
 test("PDF pagina tabela com muitos alunos, repete o cabeçalho e preserva textos longos e valores ausentes", async () => {
   const muitosAlunos = Array.from({ length: 42 }, (_, indice) => ({
     _id: `507f1f77bcf86cd79944${String(indice + 100).padStart(4, "0")}`,
-    ra: indice === 0 ? null : `RA-${indice + 1}`,
+    ra: indice === 0 ? null : String(indice + 1).padStart(13, "0"),
     nomeCompleto:
       indice === 0
         ? null

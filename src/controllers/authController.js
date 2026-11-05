@@ -1,4 +1,5 @@
 import authService from "../services/authService.js";
+import { normalizarRa, normalizarRaExistente } from "../utils/ra.js";
 
 async function loginProfessor(req, res, next) {
   try {
@@ -104,19 +105,22 @@ async function loginAluno(req, res, next) {
   try {
     const { ra, senha } = req.body ?? {};
 
+    // Alunos antigos podem ter RA fora do padrão de 13 dígitos: o login não os bloqueia.
     if (
-      typeof ra !== "string" ||
-      !ra.trim() ||
+      !normalizarRaExistente(ra) ||
       typeof senha !== "string" ||
       !senha
     ) {
       return res.status(400).json({
         sucesso: false,
-        mensagem: "RA e senha são obrigatórios.",
+        mensagem: "Informe o RA e a senha.",
       });
     }
 
-    const resultado = await authService.loginAluno(ra, senha);
+    const resultado = await authService.loginAluno(
+      normalizarRaExistente(ra),
+      senha,
+    );
 
     if (resultado.erro === "jwt-nao-configurado") {
       return res.status(500).json({
@@ -158,9 +162,10 @@ async function entrarTurma(req, res, next) {
   try {
     const { ra, codigoPermanente, senha } = req.body ?? {};
 
+    // RA antigo de aluno já cadastrado é aceito; o service exige 13 dígitos só se
+    // esta entrada for criar um aluno novo.
     if (
-      typeof ra !== "string" ||
-      !ra.trim() ||
+      !normalizarRaExistente(ra) ||
       typeof codigoPermanente !== "string" ||
       !codigoPermanente.trim() ||
       typeof senha !== "string" ||
@@ -168,12 +173,12 @@ async function entrarTurma(req, res, next) {
     ) {
       return res.status(400).json({
         sucesso: false,
-        mensagem: "RA, código da turma e senha são obrigatórios.",
+        mensagem: "Informe o RA, o código da turma e a senha.",
       });
     }
 
     const resultado = await authService.entrarTurma(
-      ra,
+      normalizarRaExistente(ra),
       codigoPermanente,
       senha,
     );
@@ -189,6 +194,13 @@ async function entrarTurma(req, res, next) {
       return res.status(401).json({
         sucesso: false,
         mensagem: "Código da turma ou senha inválidos.",
+      });
+    }
+
+    if (resultado.erro === "ra-invalido") {
+      return res.status(400).json({
+        sucesso: false,
+        mensagem: "Para o primeiro acesso, informe um RA com exatamente 13 dígitos.",
       });
     }
 
@@ -236,8 +248,7 @@ async function cadastrarAluno(req, res, next) {
     const { ra, codigoPermanente, nomeCompleto, sexo } = req.body ?? {};
 
     if (
-      typeof ra !== "string" ||
-      !ra.trim() ||
+      !normalizarRa(ra) ||
       typeof codigoPermanente !== "string" ||
       !codigoPermanente.trim() ||
       typeof nomeCompleto !== "string" ||
@@ -246,12 +257,12 @@ async function cadastrarAluno(req, res, next) {
     ) {
       return res.status(400).json({
         sucesso: false,
-        mensagem: "Informe RA, nome completo, código da turma e sexo válido.",
+        mensagem: "Informe um RA com exatamente 13 dígitos, nome completo, código da turma e sexo válido.",
       });
     }
 
     const resultado = await authService.cadastrarAluno({
-      ra,
+      ra: normalizarRa(ra),
       codigoPermanente,
       nomeCompleto,
       sexo,

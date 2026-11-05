@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import Aluno from "../models/Aluno.js";
 import Professor from "../models/Professor.js";
 import Turma from "../models/Turma.js";
+import { normalizarRa, normalizarRaExistente } from "../utils/ra.js";
 
 async function loginProfessor(email, senha) {
   if (!process.env.JWT_SECRET) {
@@ -64,12 +65,15 @@ async function loginAdmin(email, senha) {
 }
 
 async function loginAluno(ra, senha) {
+  // Login de quem já existe: aceita também RAs antigos (fora do padrão de 13 dígitos).
+  ra = normalizarRaExistente(ra);
+  if (!ra) return { erro: "ra-invalido" };
   if (!process.env.JWT_SECRET) {
     return { erro: "jwt-nao-configurado" };
   }
 
   const aluno = await Aluno.findOne({
-    ra: ra.trim(),
+    ra,
   });
 
   if (!aluno) {
@@ -103,6 +107,10 @@ async function loginAluno(ra, senha) {
 }
 
 async function entrarTurma(ra, codigoPermanente, senha) {
+  // Aluno existente entra com o RA que já tem (mesmo antigo); só um aluno novo,
+  // criado nesta entrada, precisa de RA com 13 dígitos (conferido abaixo).
+  ra = normalizarRaExistente(ra);
+  if (!ra) return { erro: "ra-invalido" };
   if (!process.env.JWT_SECRET) {
     return { erro: "jwt-nao-configurado" };
   }
@@ -121,7 +129,7 @@ async function entrarTurma(ra, codigoPermanente, senha) {
   }
 
   let aluno = await Aluno.findOne({
-    ra: ra.trim(),
+    ra,
   });
 
   if (aluno && aluno.turma.toString() !== turma._id.toString()) {
@@ -131,9 +139,10 @@ async function entrarTurma(ra, codigoPermanente, senha) {
   let alunoNovo = false;
 
   if (!aluno) {
+    if (!normalizarRa(ra)) return { erro: "ra-invalido" };
     try {
       aluno = await Aluno.create({
-        ra: ra.trim(),
+        ra,
         turma: turma._id,
       });
 
@@ -144,7 +153,7 @@ async function entrarTurma(ra, codigoPermanente, senha) {
       }
 
       aluno = await Aluno.findOne({
-        ra: ra.trim(),
+        ra,
       });
 
       if (!aluno || aluno.turma.toString() !== turma._id.toString()) {
@@ -171,6 +180,8 @@ async function entrarTurma(ra, codigoPermanente, senha) {
 // Primeiro acesso do aluno: cadastro sem senha, validado pelo codigo da turma.
 // Nao devolve token: para entrar, o aluno usa o RA e a senha de acesso da turma.
 async function cadastrarAluno({ ra, codigoPermanente, nomeCompleto, sexo }) {
+  ra = normalizarRa(ra);
+  if (!ra) return { erro: "ra-invalido" };
   const turma = await Turma.findOne({
     codigoPermanente: codigoPermanente.trim().toUpperCase(),
   }).select("+senhaAcessoHash");
@@ -178,11 +189,11 @@ async function cadastrarAluno({ ra, codigoPermanente, nomeCompleto, sexo }) {
   if (!turma || turma.arquivada) return { erro: "turma-nao-encontrada" };
   if (!turma.senhaAcessoHash) return { erro: "turma-sem-senha" };
 
-  if (await Aluno.exists({ ra: ra.trim() })) return { erro: "ra-ja-cadastrado" };
+  if (await Aluno.exists({ ra })) return { erro: "ra-ja-cadastrado" };
 
   try {
     const aluno = await Aluno.create({
-      ra: ra.trim(),
+      ra,
       nomeCompleto: nomeCompleto.trim(),
       sexo,
       turma: turma._id,

@@ -9,11 +9,11 @@ import Turma from "../src/models/Turma.js";
 const segredoTeste = "segredo-local-login-aluno";
 const alunoId = "507f1f77bcf86cd799439201";
 const turmaId = "507f1f77bcf86cd799439202";
-const raAluno = "RA-TESTE";
+const raAluno = "0000987654321";
 const senhaTurma = "senha-compartilhada";
 const hashTurma = await bcrypt.hash(senhaTurma, 4);
 const mensagemCredenciaisInvalidas = "RA ou senha inválidos.";
-const mensagemCamposObrigatorios = "RA e senha são obrigatórios.";
+const mensagemCamposObrigatorios = "Informe o RA e a senha.";
 const mensagemConfiguracaoAusente = "Autenticação não configurada no servidor.";
 
 const originaisModelos = new Map();
@@ -132,7 +132,7 @@ test("login válido consulta o hash protegido e emite JWT do aluno com validade 
   process.env.JWT_EXPIRES_IN_ALUNO = "45m";
   alunoAtual = alunoFixture({ cadastroInicialConcluido: true });
 
-  const resposta = await postLogin({ ra: ` ${raAluno} `, senha: senhaTurma });
+  const resposta = await postLogin({ ra: raAluno, senha: senhaTurma });
   const corpo = await resposta.json();
   const payload = jwt.verify(corpo.token, segredoTeste);
 
@@ -180,10 +180,10 @@ test("senha incorreta retorna 401 com a resposta genérica", async () => {
 });
 
 test("aluno inexistente retorna 401 com a mesma resposta genérica", async () => {
-  const resposta = await postLogin({ ra: "RA-INEXISTENTE", senha: senhaTurma });
+  const resposta = await postLogin({ ra: "0000000000999", senha: senhaTurma });
 
   respostaCredenciaisInvalidas(resposta, await resposta.json());
-  assert.deepEqual(chamadas.buscasAluno, [{ ra: "RA-INEXISTENTE" }]);
+  assert.deepEqual(chamadas.buscasAluno, [{ ra: "0000000000999" }]);
   assert.deepEqual(chamadas.buscasTurma, []);
 });
 
@@ -218,7 +218,10 @@ test("campos ausentes ou inválidos retornam HTTP 400 com o contrato atual", asy
     {},
     { ra: "", senha: senhaTurma },
     { ra: "   ", senha: senhaTurma },
+    // RA fora do padrão de 13 dígitos não é campo inválido no login (alunos antigos);
+    // se não existir, a resposta é o 401 genérico (ver cadastroAluno.test.js).
     { ra: 123, senha: senhaTurma },
+    { ra: 1234567890123, senha: senhaTurma },
     { ra: raAluno, senha: "" },
     { ra: raAluno, senha: false },
   ]) {
