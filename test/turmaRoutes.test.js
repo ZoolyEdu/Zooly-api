@@ -6,6 +6,11 @@ import app from "../src/app.js";
 import Escola from "../src/models/Escola.js";
 import Professor from "../src/models/Professor.js";
 import Turma from "../src/models/Turma.js";
+import {
+  FORMATO_CODIGO_TURMA,
+  TENTATIVAS_CODIGO_TURMA,
+  configurarGeradorCodigoTurma,
+} from "../src/services/turmaService.js";
 
 const segredoTeste = "segredo-local-turma-routes";
 const professorId = "507f1f77bcf86cd799439701";
@@ -108,6 +113,7 @@ function prepararMocks() {
     ordenacaoLista: null,
     populate: [],
     dadosCriacao: [],
+    existencias: [],
     salvas: 0,
   };
   errosCriacao = [];
@@ -154,6 +160,13 @@ function prepararMocks() {
       },
     };
   });
+  substituir(Turma, "exists", async (filtro) => {
+    chamadas.existencias.push(filtro);
+    const existente = [...turmas.values()].find(
+      (turma) => turma.codigoPermanente === filtro.codigoPermanente,
+    );
+    return existente ? { _id: existente._id } : null;
+  });
   substituir(Turma, "create", async (dados) => {
     chamadas.dadosCriacao.push(dados);
     if (errosCriacao.length) throw errosCriacao.shift();
@@ -199,6 +212,7 @@ before(async () => {
 beforeEach(prepararMocks);
 
 afterEach(() => {
+  configurarGeradorCodigoTurma(null);
   for (const [chave, metodoOriginal] of originais) {
     const [nomeModelo, metodo] = chave.split(".");
     ({ Escola, Professor, Turma })[nomeModelo][metodo] = metodoOriginal;
@@ -276,7 +290,7 @@ test("POST /turmas usa a identidade do token, normaliza o nome e gera código pe
     mensagem: "Turma cadastrada com sucesso.",
     turma: corpo.turma,
   });
-  assert.match(corpo.turma.codigoPermanente, /^TUR-[A-F0-9]{12}$/);
+  assert.match(corpo.turma.codigoPermanente, FORMATO_CODIGO_TURMA);
   assert.equal(corpo.turma.nome, "Turma Nova");
   assert.equal(corpo.turma.anoEscolar, 2026);
   assert.equal(corpo.turma.escola, escolaAId);
@@ -329,7 +343,7 @@ test("POST /turmas responde conforme professor ausente, escola não vinculada ou
   assert.equal(chamadas.dadosCriacao.length, 0);
 });
 
-test("POST /turmas tenta novamente até três vezes após colisão de código 11000", async () => {
+test("POST /turmas tenta novamente após colisão de código 11000 (corrida entre cadastros)", async () => {
   errosCriacao = [
     Object.assign(new Error("duplicate key"), { code: 11000 }),
     Object.assign(new Error("duplicate key"), { code: 11000 }),
@@ -346,11 +360,11 @@ test("POST /turmas tenta novamente até três vezes após colisão de código 11
     new Set(chamadas.dadosCriacao.map((dados) => dados.codigoPermanente)).size,
     3,
   );
-  assert.match(corpo.turma.codigoPermanente, /^TUR-[A-F0-9]{12}$/);
+  assert.match(corpo.turma.codigoPermanente, FORMATO_CODIGO_TURMA);
 });
 
-test("POST /turmas para após três colisões com a resposta de erro atual", async () => {
-  errosCriacao = Array.from({ length: 3 }, () =>
+test("POST /turmas para após o limite de tentativas com a resposta de erro atual", async () => {
+  errosCriacao = Array.from({ length: TENTATIVAS_CODIGO_TURMA }, () =>
     Object.assign(new Error("duplicate key"), { code: 11000 }),
   );
   const resposta = await requisitar("/turmas", {
@@ -362,7 +376,36 @@ test("POST /turmas para após três colisões com a resposta de erro atual", asy
     sucesso: false,
     mensagem: "Não foi possível gerar um código para a turma.",
   });
-  assert.equal(chamadas.dadosCriacao.length, 3);
+  assert.equal(chamadas.dadosCriacao.length, TENTATIVAS_CODIGO_TURMA);
+});
+
+test("POST /turmas pula código já cadastrado sem tentar gravar e usa o próximo livre", async () => {
+  const sequencia = ["TURMA-A", "TUR-NOVO"];
+  configurarGeradorCodigoTurma(() => sequencia.shift());
+  const resposta = await requisitar("/turmas", {
+    method: "POST",
+    body: { nome: "Turma sem colisão", escolaId: escolaAId, anoEscolar: 2026 },
+  });
+  const corpo = await resposta.json();
+
+  assert.equal(resposta.status, 201);
+  assert.equal(corpo.turma.codigoPermanente, "TUR-NOVO");
+  assert.deepEqual(
+    chamadas.existencias.map((filtro) => filtro.codigoPermanente),
+    ["TURMA-A", "TUR-NOVO"],
+  );
+  assert.equal(chamadas.dadosCriacao.length, 1);
+});
+
+test("POST /turmas devolve erro se todos os códigos sorteados já existem", async () => {
+  configurarGeradorCodigoTurma(() => "TURMA-A");
+  const resposta = await requisitar("/turmas", {
+    method: "POST",
+    body: { nome: "Turma lotada", escolaId: escolaAId, anoEscolar: 2026 },
+  });
+  assert.equal(resposta.status, 500);
+  assert.equal(chamadas.existencias.length, TENTATIVAS_CODIGO_TURMA);
+  assert.equal(chamadas.dadosCriacao.length, 0);
 });
 
 test("GET /turmas lista somente as turmas ativas do professor responsável e preenche relações", async () => {
