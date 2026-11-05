@@ -2,7 +2,14 @@
 // índice único real (MongoDB em memória) e compatibilidade com códigos antigos.
 // Nenhum banco real é usado.
 import assert from "node:assert/strict";
-import { after, afterEach, before, beforeEach, describe, test } from "node:test";
+import {
+  after,
+  afterEach,
+  before,
+  beforeEach,
+  describe,
+  test,
+} from "node:test";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import Professor from "../src/models/Professor.js";
@@ -26,20 +33,38 @@ describe("geração do código curto", () => {
   });
 
   test("usa todo o alfabeto, inclusive as pontas, de forma determinística quando injetado", () => {
-    assert.equal(gerarCodigoPermanente(() => 0), "TUR-AAAA");
-    assert.equal(gerarCodigoPermanente(() => 35), "TUR-9999");
+    assert.equal(
+      gerarCodigoPermanente(() => 0),
+      "TUR-AAAA",
+    );
+    assert.equal(
+      gerarCodigoPermanente(() => 35),
+      "TUR-9999",
+    );
     const indices = [32, 4, 28, 33];
-    assert.equal(gerarCodigoPermanente(() => indices.shift()), "TUR-6E27");
+    assert.equal(
+      gerarCodigoPermanente(() => indices.shift()),
+      "TUR-6E27",
+    );
     assert.equal(ALFABETO_CODIGO_TURMA.length, 36);
   });
 
   test("é aleatório o suficiente para não repetir em lotes pequenos", () => {
-    const codigos = new Set(Array.from({ length: 1000 }, () => gerarCodigoPermanente()));
+    const codigos = new Set(
+      Array.from({ length: 1000 }, () => gerarCodigoPermanente()),
+    );
     assert.ok(codigos.size >= 990, `apenas ${codigos.size} códigos distintos`);
   });
 
   test("o formato novo não aceita códigos antigos nem variações (é só para os novos)", () => {
-    for (const codigo of ["TUR-6E2772697D59", "TURMA-A", "tur-6e27", "TUR-6E2", "TUR-6E27X", "TUR_6E27"]) {
+    for (const codigo of [
+      "TUR-6E2772697D59",
+      "TURMA-A",
+      "tur-6e27",
+      "TUR-6E2",
+      "TUR-6E27X",
+      "TUR_6E27",
+    ]) {
       assert.doesNotMatch(codigo, FORMATO_CODIGO_TURMA, codigo);
     }
   });
@@ -91,7 +116,10 @@ describe("cadastro de turmas com código curto (MongoDB em memória)", () => {
     const { turma, erro } = await cadastrar("1º ano A");
     assert.equal(erro, undefined);
     assert.match(turma.codigoPermanente, FORMATO_CODIGO_TURMA);
-    assert.equal(await Turma.countDocuments({ codigoPermanente: turma.codigoPermanente }), 1);
+    assert.equal(
+      await Turma.countDocuments({ codigoPermanente: turma.codigoPermanente }),
+      1,
+    );
   });
 
   test("código já existente é evitado e o próximo livre é usado", async () => {
@@ -106,11 +134,17 @@ describe("cadastro de turmas com código curto (MongoDB em memória)", () => {
   test("cadastros simultâneos com o mesmo sorteio não duplicam código (índice único)", async () => {
     const sequencia = ["TUR-ZZZZ", "TUR-ZZZZ", "TUR-YYYY", "TUR-XXXX"];
     configurarGeradorCodigoTurma(() => sequencia.shift());
-    const resultados = await Promise.all([cadastrar("Turma A"), cadastrar("Turma B")]);
+    const resultados = await Promise.all([
+      cadastrar("Turma A"),
+      cadastrar("Turma B"),
+    ]);
     const codigos = resultados.map((r) => r.turma.codigoPermanente).sort();
     assert.equal(new Set(codigos).size, 2);
     assert.ok(codigos.includes("TUR-ZZZZ"));
-    assert.equal(await Turma.countDocuments({ codigoPermanente: "TUR-ZZZZ" }), 1);
+    assert.equal(
+      await Turma.countDocuments({ codigoPermanente: "TUR-ZZZZ" }),
+      1,
+    );
   });
 
   test("todos os sorteios ocupados: erro controlado, nenhuma turma duplicada", async () => {
@@ -124,8 +158,22 @@ describe("cadastro de turmas com código curto (MongoDB em memória)", () => {
   test("códigos antigos continuam intactos e funcionando ao lado dos novos", async () => {
     const senhaAcessoHash = await bcrypt.hash("1234", 4);
     const antigas = await Turma.create([
-      { nome: "Antiga hex", codigoPermanente: "TUR-6E2772697D59", anoEscolar: 2026, escola: escolaId, professorResponsavel: professor._id, senhaAcessoHash },
-      { nome: "Antiga livre", codigoPermanente: "TURMA-ANTIGA", anoEscolar: 2026, escola: escolaId, professorResponsavel: professor._id, senhaAcessoHash },
+      {
+        nome: "Antiga hex",
+        codigoPermanente: "TUR-6E2772697D59",
+        anoEscolar: 2026,
+        escola: escolaId,
+        professorResponsavel: professor._id,
+        senhaAcessoHash,
+      },
+      {
+        nome: "Antiga livre",
+        codigoPermanente: "TURMA-ANTIGA",
+        anoEscolar: 2026,
+        escola: escolaId,
+        professorResponsavel: professor._id,
+        senhaAcessoHash,
+      },
     ]);
     const nova = await cadastrar("Nova");
     assert.match(nova.turma.codigoPermanente, FORMATO_CODIGO_TURMA);
@@ -138,10 +186,18 @@ describe("cadastro de turmas com código curto (MongoDB em memória)", () => {
 
     // Entrada do aluno: código antigo e código novo, digitados em minúsculas e com espaços.
     await Turma.updateOne({ _id: nova.turma._id }, { senhaAcessoHash });
-    const comAntigo = await authService.entrarTurma("RA-1", " tur-6e2772697d59 ", "1234");
+    const comAntigo = await authService.entrarTurma(
+      "0000000000001",
+      " tur-6e2772697d59 ",
+      "1234",
+    );
     assert.equal(comAntigo.erro, undefined);
     assert.ok(comAntigo.token);
-    const comNovo = await authService.entrarTurma("RA-2", ` ${nova.turma.codigoPermanente.toLowerCase()} `, "1234");
+    const comNovo = await authService.entrarTurma(
+      "0000000000002",
+      ` ${nova.turma.codigoPermanente.toLowerCase()} `,
+      "1234",
+    );
     assert.equal(comNovo.erro, undefined);
     assert.ok(comNovo.token);
   });
